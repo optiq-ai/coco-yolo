@@ -1,0 +1,40 @@
+# Zależności dla backendu aplikacji detekcji obiektów
+
+# FastAPI i powiązane
+fastapi==0.95.1
+uvicorn==0.22.0
+python-multipart==0.0.6
+pydantic==1.10.7
+email-validator==2.0.0
+
+# Baza danych
+sqlalchemy==2.0.12
+psycopg2-binary==2.9.6
+alembic==1.10.4
+
+# Uwierzytelnianie
+python-jose==3.3.0
+passlib==1.7.4
+bcrypt==4.0.1
+
+# Obsługa zadań asynchronicznych
+celery==5.2.7
+redis==4.5.5
+
+# Obsługa plików i przechowywanie obiektów
+minio==7.1.14
+pillow==9.5.0
+
+# Detekcja obiektów i przetwarzanie obrazów
+opencv-python-headless==4.7.0.72
+ultralytics==8.0.120
+numpy==1.24.3
+matplotlib==3.7.1
+
+# WebSocket
+websockets==11.0.3
+
+# Narzędzia pomocnicze
+python-dotenv==1.0.0
+tenacity==8.2.2
+httpx==0.24.0

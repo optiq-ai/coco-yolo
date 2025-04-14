@@ -1,0 +1,30 @@
+FROM node:16-alpine as build
+
+WORKDIR /app
+
+# Kopiowanie plików package.json i package-lock.json
+COPY package*.json ./
+
+# Instalacja zależności
+RUN npm install
+
+# Kopiowanie kodu źródłowego
+COPY . .
+
+# Budowanie aplikacji
+RUN npm run build
+
+# Etap produkcyjny
+FROM nginx:1.21-alpine
+
+# Kopiowanie zbudowanej aplikacji z etapu build
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Kopiowanie konfiguracji Nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Ekspozycja portu
+EXPOSE 80
+
+# Uruchomienie Nginx
+CMD ["nginx", "-g", "daemon off;"]

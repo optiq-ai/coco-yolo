@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # Frontend - React application
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: yolo-coco-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - yolo-coco-network
+
+  # Backend API - FastAPI application
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: yolo-coco-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/yolo_coco
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_URL=minio:9000
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - minio
+      - redis
+    networks:
+      - yolo-coco-network
+
+  # Worker for background tasks
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.worker
+    container_name: yolo-coco-worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/yolo_coco
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_URL=minio:9000
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - api
+      - redis
+    networks:
+      - yolo-coco-network
+
+  # PostgreSQL database
+  db:
+    image: postgres:14
+    container_name: yolo-coco-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=yolo_coco
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - yolo-coco-network
+
+  # MinIO for object storage
+  minio:
+    image: minio/minio
+    container_name: yolo-coco-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - yolo-coco-network
+
+  # Redis for caching and message broker
+  redis:
+    image: redis:6
+    container_name: yolo-coco-redis
+    restart: unless-stopped
+    networks:
+      - yolo-coco-network
+
+  # Nginx for serving frontend and routing API requests
+  nginx:
+    image: nginx:1.21
+    container_name: yolo-coco-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ../frontend/build:/usr/share/nginx/html
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - yolo-coco-network
+
+  # RTSP server for testing IP cameras (optional)
+  rtsp-server:
+    image: aler9/rtsp-simple-server
+    container_name: yolo-coco-rtsp
+    restart: unless-stopped
+    ports:
+      - "8554:8554"
+    networks:
+      - yolo-coco-network
+
+networks:
+  yolo-coco-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:

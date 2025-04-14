@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -6,9 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Kopiowanie pliku requirements.txt

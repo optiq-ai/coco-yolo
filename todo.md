@@ -6,28 +6,28 @@
 - [ ] Konfiguracja repozytorium GitHub
 
 ## Implementacja frontendu
-- [ ] Implementacja komponentów układu (layout)
-- [ ] Implementacja edytora obrazów
-- [ ] Implementacja komponentów wspólnych
-- [ ] Implementacja stron aplikacji
+- [x] Implementacja komponentów układu (layout)
+- [x] Implementacja edytora obrazów
+- [x] Implementacja komponentów wspólnych
+- [x] Implementacja stron aplikacji
 - [ ] Implementacja usług API
 - [ ] Implementacja narzędzi pomocniczych
 
 ## Implementacja backendu
-- [ ] Implementacja modeli bazy danych
-- [ ] Implementacja schematów Pydantic
-- [ ] Implementacja usług biznesowych
-- [ ] Implementacja endpointów API
-- [ ] Implementacja silników AI
-- [ ] Implementacja zadań asynchronicznych
+- [x] Implementacja modeli bazy danych
+- [x] Implementacja schematów Pydantic
+- [x] Implementacja usług biznesowych
+- [x] Implementacja endpointów API
+- [x] Implementacja silników AI
+- [x] Implementacja zadań asynchronicznych
 
 ## Konfiguracja Docker
-- [ ] Konfiguracja Dockerfile dla frontendu
-- [ ] Konfiguracja Dockerfile dla backendu
-- [ ] Konfiguracja docker-compose.yml
-- [ ] Konfiguracja Nginx
+- [x] Konfiguracja Dockerfile dla frontendu
+- [x] Konfiguracja Dockerfile dla backendu
+- [x] Konfiguracja docker-compose.yml
+- [x] Konfiguracja Nginx
 
 ## Testowanie i wdrożenie
-- [ ] Testowanie lokalne
-- [ ] Wdrożenie na GitHub
-- [ ] Przygotowanie instrukcji wdrożenia przez Portainer
+- [x] Testowanie lokalne
+- [x] Wdrożenie na GitHub
+- [x] Przygotowanie instrukcji wdrożenia przez Portainer

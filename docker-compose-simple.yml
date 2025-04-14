@@ -1,0 +1,113 @@
+version: '3'
+
+services:
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+      - minio
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/yolo_coco
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_URL=minio:9000
+      - SECRET_KEY=supersecretkey
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+  # Worker dla zadań asynchronicznych
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    depends_on:
+      - backend
+      - redis
+      - minio
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/yolo_coco
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_URL=minio:9000
+      - SECRET_KEY=supersecretkey
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+  # Baza danych PostgreSQL
+  db:
+    image: postgres:14-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=yolo_coco
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+  # Redis dla kolejki zadań
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+  # MinIO dla przechowywania plików
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - yolo-coco-network
+    restart: unless-stopped
+
+networks:
+  yolo-coco-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  backend_data:

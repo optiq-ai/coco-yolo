@@ -1,4 +1,4 @@
-FROM node:16-alpine as build
+FROM node:20-alpine as build
 
 WORKDIR /app
 
@@ -15,9 +15,9 @@ COPY . .
 RUN npm run build
 
 # Etap produkcyjny
-FROM nginx:1.21-alpine
+FROM nginx:alpine
 
-# Kopiowanie zbudowanej aplikacji z etapu build
+# Kopiowanie plików statycznych z etapu budowania
 COPY --from=build /app/build /usr/share/nginx/html
 
 # Kopiowanie konfiguracji Nginx

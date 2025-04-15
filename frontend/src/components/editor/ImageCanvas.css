@@ -1,0 +1,185 @@
+.image-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.image-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.annotation-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.controls-container {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  border-radius: 4px;
+  z-index: 10;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.class-selector {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  border-radius: 4px;
+  z-index: 10;
+}
+
+.bounding-box {
+  position: absolute;
+  border: 2px solid;
+  background-color: rgba(255, 255, 255, 0.1);
+  cursor: move;
+}
+
+.bounding-box-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: white;
+  border: 1px solid black;
+}
+
+.bounding-box-handle.top-left {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+
+.bounding-box-handle.top-right {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+
+.bounding-box-handle.bottom-left {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.bounding-box-handle.bottom-right {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
+
+.bounding-box-label {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.7);
+  z-index: 20;
+}
+
+.crosshair {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.crosshair-h {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background-color: rgba(255, 0, 0, 0.5);
+}
+
+.crosshair-v {
+  position: absolute;
+  width: 1px;
+  height: 100%;
+  background-color: rgba(255, 0, 0, 0.5);
+}
+
+.mini-map {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  border: 1px solid #ccc;
+  background-color: white;
+  z-index: 10;
+}
+
+.mini-map-viewport {
+  position: absolute;
+  border: 1px solid red;
+  background-color: rgba(255, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+.image-info {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 10;
+}
+
+.annotation-count {
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+.class-color-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  border-radius: 2px;
+}

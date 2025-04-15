@@ -1,78 +1,87 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, JSON, Boolean, Text
 from sqlalchemy.orm import relationship
-import datetime
-
+from sqlalchemy.sql import func
 from app.db.session import Base
+
+class Image(Base):
+    __tablename__ = "images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    path = Column(String)
+    width = Column(Integer)
+    height = Column(Integer)
+    format = Column(String)
+    size = Column(Integer)  # rozmiar w bajtach
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relacje
+    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=True)
+    dataset = relationship("Dataset", back_populates="images")
+    annotations = relationship("Annotation", back_populates="image", cascade="all, delete-orphan")
+    detections = relationship("Detection", back_populates="image", cascade="all, delete-orphan")
 
 class Dataset(Base):
     __tablename__ = "datasets"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
+    description = Column(Text, nullable=True)
+    format = Column(String)  # YOLO, COCO, VOC
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     # Relacje
     images = relationship("Image", back_populates="dataset")
+    trainings = relationship("Training", back_populates="dataset")
 
-class Image(Base):
-    __tablename__ = "images"
+class Class(Base):
+    __tablename__ = "classes"
 
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, index=True)
-    filepath = Column(String)
-    width = Column(Integer)
-    height = Column(Integer)
-    format = Column(String)
-    is_labeled = Column(Boolean, default=False)
-    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
+    name = Column(String, index=True)
+    description = Column(Text, nullable=True)
+    color = Column(String, nullable=True)  # kolor w formacie HEX
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     # Relacje
-    dataset = relationship("Dataset", back_populates="images")
-    labels = relationship("Label", back_populates="image", cascade="all, delete-orphan")
-    detections = relationship("Detection", back_populates="image", cascade="all, delete-orphan")
+    annotations = relationship("Annotation", back_populates="class_obj")
 
-class ObjectClass(Base):
-    __tablename__ = "object_classes"
+class Annotation(Base):
+    __tablename__ = "annotations"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, unique=True)
-    color = Column(String)  # Format HEX, np. "#FF5733"
-    description = Column(String, nullable=True)
-
+    x = Column(Float)  # współrzędna x lewego górnego rogu (lub środka dla YOLO)
+    y = Column(Float)  # współrzędna y lewego górnego rogu (lub środka dla YOLO)
+    width = Column(Float)
+    height = Column(Float)
+    format = Column(String)  # YOLO, COCO, VOC
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     # Relacje
-    labels = relationship("Label", back_populates="object_class")
-
-class Label(Base):
-    __tablename__ = "labels"
-
-    id = Column(Integer, primary_key=True, index=True)
     image_id = Column(Integer, ForeignKey("images.id"))
-    class_id = Column(Integer, ForeignKey("object_classes.id"))
-    type = Column(String)  # "bbox" lub "polygon"
-    coordinates = Column(Text)  # JSON jako string
-    confidence = Column(Float, nullable=True)  # Dla automatycznych etykiet
-
-    # Relacje
-    image = relationship("Image", back_populates="labels")
-    object_class = relationship("ObjectClass", back_populates="labels")
+    image = relationship("Image", back_populates="annotations")
+    class_id = Column(Integer, ForeignKey("classes.id"))
+    class_obj = relationship("Class", back_populates="annotations")
 
 class Model(Base):
     __tablename__ = "models"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    type = Column(String)  # np. "yolo", "faster_rcnn"
-    filepath = Column(String)
+    description = Column(Text, nullable=True)
+    model_type = Column(String)  # YOLOv5, YOLOv8, itp.
+    framework = Column(String)  # PyTorch, TensorFlow, itp.
     version = Column(String)
-    accuracy = Column(Float, nullable=True)
-    precision = Column(Float, nullable=True)
-    recall = Column(Float, nullable=True)
-    f1_score = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
+    path = Column(String, nullable=True)
+    config = Column(JSON, nullable=True)
+    metrics = Column(JSON, nullable=True)
+    status = Column(String)  # created, training, trained, failed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     # Relacje
     trainings = relationship("Training", back_populates="model")
     detections = relationship("Detection", back_populates="model")
@@ -81,78 +90,35 @@ class Training(Base):
     __tablename__ = "trainings"
 
     id = Column(Integer, primary_key=True, index=True)
-    model_id = Column(Integer, ForeignKey("models.id"))
-    dataset_id = Column(Integer, ForeignKey("datasets.id"))
-    status = Column(String)  # "pending", "running", "completed", "failed", "cancelled"
-    epochs = Column(Integer)
-    batch_size = Column(Integer)
-    learning_rate = Column(Float)
-    progress = Column(Float, default=0.0)  # 0.0 - 1.0
-    started_at = Column(DateTime, default=datetime.datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
-
+    name = Column(String, index=True)
+    description = Column(Text, nullable=True)
+    config = Column(JSON, nullable=True)
+    results = Column(JSON, nullable=True)
+    status = Column(String)  # created, processing, completed, failed
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     # Relacje
+    dataset_id = Column(Integer, ForeignKey("datasets.id"))
+    dataset = relationship("Dataset", back_populates="trainings")
+    model_id = Column(Integer, ForeignKey("models.id"))
     model = relationship("Model", back_populates="trainings")
-    dataset = relationship("Dataset")
 
 class Detection(Base):
     __tablename__ = "detections"
 
     id = Column(Integer, primary_key=True, index=True)
+    results = Column(JSON, nullable=True)
+    status = Column(String)  # created, processing, completed, failed
+    error = Column(Text, nullable=True)
+    processing_time = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relacje
     image_id = Column(Integer, ForeignKey("images.id"))
-    model_id = Column(Integer, ForeignKey("models.id"))
-    confidence_threshold = Column(Float)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-    # Relacje
     image = relationship("Image", back_populates="detections")
+    model_id = Column(Integer, ForeignKey("models.id"))
     model = relationship("Model", back_populates="detections")
-    results = relationship("DetectionResult", back_populates="detection", cascade="all, delete-orphan")
-
-class DetectionResult(Base):
-    __tablename__ = "detection_results"
-
-    id = Column(Integer, primary_key=True, index=True)
-    detection_id = Column(Integer, ForeignKey("detections.id"))
-    class_id = Column(Integer, ForeignKey("object_classes.id"))
-    coordinates = Column(Text)  # JSON jako string
-    confidence = Column(Float)
-
-    # Relacje
-    detection = relationship("Detection", back_populates="results")
-    object_class = relationship("ObjectClass")
-
-class IPCamera(Base):
-    __tablename__ = "ip_cameras"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    url = Column(String)  # URL strumienia RTSP/HTTP
-    username = Column(String, nullable=True)
-    password = Column(String, nullable=True)
-    status = Column(String, default="inactive")  # "active", "inactive", "error"
-    model_id = Column(Integer, ForeignKey("models.id"), nullable=True)  # Model do detekcji
-    confidence_threshold = Column(Float, default=0.5)
-    fps = Column(Integer, default=10)  # Liczba klatek na sekundę do przetwarzania
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
-    # Relacje
-    model = relationship("Model")
-    recordings = relationship("Recording", back_populates="camera", cascade="all, delete-orphan")
-
-class Recording(Base):
-    __tablename__ = "recordings"
-
-    id = Column(Integer, primary_key=True, index=True)
-    camera_id = Column(Integer, ForeignKey("ip_cameras.id"))
-    filepath = Column(String)
-    start_time = Column(DateTime)
-    end_time = Column(DateTime, nullable=True)
-    duration = Column(Integer, nullable=True)  # w sekundach
-    size = Column(Integer, nullable=True)  # w bajtach
-    status = Column(String, default="recording")  # "recording", "completed", "error"
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-    # Relacje
-    camera = relationship("IPCamera", back_populates="recordings")

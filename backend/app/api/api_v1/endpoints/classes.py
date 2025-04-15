@@ -1,134 +1,85 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-
 from app.db.session import get_db
-from app.models.models import ObjectClass
-from app.schemas.schemas import ObjectClassCreate, ObjectClass as ObjectClassSchema
+from app.schemas.schemas import ClassCreate, ClassResponse, ClassList
+from app.models.models import Class
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-@router.post("/", response_model=ObjectClassSchema)
+@router.post("/", response_model=ClassResponse)
 def create_class(
-    class_data: ObjectClassCreate,
+    class_data: ClassCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    Tworzy nową klasę obiektów.
-    """
+    """Tworzy nową klasę obiektów"""
     try:
-        # Sprawdzenie, czy klasa o takiej nazwie już istnieje
-        existing_class = db.query(ObjectClass).filter(ObjectClass.name == class_data.name).first()
-        if existing_class:
-            raise HTTPException(status_code=400, detail=f"Klasa o nazwie '{class_data.name}' już istnieje")
-        
-        # Utworzenie nowej klasy
-        db_class = ObjectClass(
+        new_class = Class(
             name=class_data.name,
-            color=class_data.color,
-            description=class_data.description
+            description=class_data.description,
+            color=class_data.color
         )
-        
-        db.add(db_class)
+        db.add(new_class)
         db.commit()
-        db.refresh(db_class)
-        
-        return db_class
-    except HTTPException as e:
-        raise e
+        db.refresh(new_class)
+        return new_class
     except Exception as e:
+        logger.error(f"Błąd podczas tworzenia klasy: {str(e)}")
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Błąd podczas tworzenia klasy: {str(e)}")
 
-@router.get("/", response_model=List[ObjectClassSchema])
+@router.get("/{class_id}", response_model=ClassResponse)
+def get_class(
+    class_id: int,
+    db: Session = Depends(get_db)
+):
+    """Pobiera klasę po ID"""
+    class_obj = db.query(Class).filter(Class.id == class_id).first()
+    if not class_obj:
+        raise HTTPException(status_code=404, detail="Klasa nie znaleziona")
+    return class_obj
+
+@router.get("/", response_model=ClassList)
 def get_classes(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Pobiera listę klas obiektów.
-    """
-    try:
-        classes = db.query(ObjectClass).offset(skip).limit(limit).all()
-        return classes
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Błąd podczas pobierania klas: {str(e)}")
+    """Pobiera listę klas"""
+    classes = db.query(Class).offset(skip).limit(limit).all()
+    return {"items": classes, "total": len(classes)}
 
-@router.get("/{class_id}", response_model=ObjectClassSchema)
-def get_class(
-    class_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Pobiera klasę o podanym ID.
-    """
-    try:
-        db_class = db.query(ObjectClass).filter(ObjectClass.id == class_id).first()
-        if not db_class:
-            raise HTTPException(status_code=404, detail=f"Klasa o ID {class_id} nie została znaleziona")
-        
-        return db_class
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Błąd podczas pobierania klasy: {str(e)}")
-
-@router.put("/{class_id}", response_model=ObjectClassSchema)
+@router.put("/{class_id}", response_model=ClassResponse)
 def update_class(
     class_id: int,
-    class_data: ObjectClassCreate,
+    class_data: ClassCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    Aktualizuje klasę o podanym ID.
-    """
-    try:
-        db_class = db.query(ObjectClass).filter(ObjectClass.id == class_id).first()
-        if not db_class:
-            raise HTTPException(status_code=404, detail=f"Klasa o ID {class_id} nie została znaleziona")
-        
-        # Sprawdzenie, czy inna klasa o takiej nazwie już istnieje
-        existing_class = db.query(ObjectClass).filter(
-            ObjectClass.name == class_data.name,
-            ObjectClass.id != class_id
-        ).first()
-        
-        if existing_class:
-            raise HTTPException(status_code=400, detail=f"Inna klasa o nazwie '{class_data.name}' już istnieje")
-        
-        # Aktualizacja klasy
-        db_class.name = class_data.name
-        db_class.color = class_data.color
-        db_class.description = class_data.description
-        
-        db.commit()
-        db.refresh(db_class)
-        
-        return db_class
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Błąd podczas aktualizacji klasy: {str(e)}")
+    """Aktualizuje klasę"""
+    class_obj = db.query(Class).filter(Class.id == class_id).first()
+    if not class_obj:
+        raise HTTPException(status_code=404, detail="Klasa nie znaleziona")
+    
+    class_obj.name = class_data.name
+    class_obj.description = class_data.description
+    class_obj.color = class_data.color
+    
+    db.commit()
+    db.refresh(class_obj)
+    return class_obj
 
-@router.delete("/{class_id}", response_model=ObjectClassSchema)
+@router.delete("/{class_id}", response_model=bool)
 def delete_class(
     class_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Usuwa klasę o podanym ID.
-    """
-    try:
-        db_class = db.query(ObjectClass).filter(ObjectClass.id == class_id).first()
-        if not db_class:
-            raise HTTPException(status_code=404, detail=f"Klasa o ID {class_id} nie została znaleziona")
-        
-        # Usunięcie klasy
-        db.delete(db_class)
-        db.commit()
-        
-        return db_class
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Błąd podczas usuwania klasy: {str(e)}")
+    """Usuwa klasę"""
+    class_obj = db.query(Class).filter(Class.id == class_id).first()
+    if not class_obj:
+        raise HTTPException(status_code=404, detail="Klasa nie znaleziona")
+    
+    db.delete(class_obj)
+    db.commit()
+    return True

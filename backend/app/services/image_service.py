@@ -1,217 +1,119 @@
-from fastapi import UploadFile, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
-import os
-import shutil
-from PIL import Image as PILImage
-import io
-import uuid
-from typing import List, Optional, Dict, Any
-
+from typing import List, Optional
+from app.db.session import get_db
+from app.schemas.schemas import ImageCreate, ImageResponse, ImageList
 from app.models.models import Image
-from app.schemas.schemas import ImageCreate, ImageResponse, ImagesResponse
-from app.services.minio_service import minio_service
+import os
+import uuid
+import shutil
+import logging
+from minio import Minio
+from app.core.config import settings
+import cv2
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 class ImageService:
-    @staticmethod
-    async def create_image(db: Session, file: UploadFile, dataset_id: Optional[int] = None) -> ImageResponse:
-        """
-        Tworzy nowy obraz w systemie.
-        """
+    def __init__(self, db: Session):
+        self.db = db
+        self.upload_dir = settings.UPLOAD_DIR
+        os.makedirs(self.upload_dir, exist_ok=True)
+        
+        # Inicjalizacja klienta MinIO
+        self.minio_client = Minio(
+            settings.MINIO_URL,
+            access_key=settings.MINIO_ROOT_USER,
+            secret_key=settings.MINIO_ROOT_PASSWORD,
+            secure=False
+        )
+        
+        # Upewnij się, że bucket istnieje
+        if not self.minio_client.bucket_exists("images"):
+            self.minio_client.make_bucket("images")
+            self.minio_client.set_bucket_policy("images", '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::images/*"]}]}')
+
+    async def upload_image(self, file: UploadFile, dataset_id: Optional[int] = None) -> Image:
+        """Przesyła nowy obraz"""
         try:
-            # Tworzenie tymczasowego pliku
-            temp_file = f"/tmp/{uuid.uuid4()}{os.path.splitext(file.filename)[1]}"
+            # Generuj unikalną nazwę pliku
+            file_extension = file.filename.split(".")[-1]
+            unique_filename = f"{uuid.uuid4()}.{file_extension}"
+            file_path = os.path.join(self.upload_dir, unique_filename)
             
-            with open(temp_file, "wb") as buffer:
+            # Zapisz plik lokalnie
+            with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             
-            # Odczytanie wymiarów obrazu
-            with PILImage.open(temp_file) as img:
-                width, height = img.size
-                format = img.format
+            # Odczytaj wymiary obrazu
+            img = cv2.imread(file_path)
+            height, width = img.shape[:2]
             
-            # Utworzenie rekordu w bazie danych
-            db_image = Image(
-                filename=file.filename,
-                filepath="",  # Tymczasowo puste, zostanie zaktualizowane po przesłaniu do MinIO
+            # Prześlij plik do MinIO
+            self.minio_client.fput_object(
+                "images", 
+                unique_filename, 
+                file_path,
+                content_type=f"image/{file_extension}"
+            )
+            
+            # Utwórz rekord w bazie danych
+            new_image = Image(
+                name=file.filename,
+                path=unique_filename,
                 width=width,
                 height=height,
-                format=format.lower() if format else "",
+                format=file_extension,
+                size=os.path.getsize(file_path),
                 dataset_id=dataset_id
             )
             
-            db.add(db_image)
-            db.commit()
-            db.refresh(db_image)
+            self.db.add(new_image)
+            self.db.commit()
+            self.db.refresh(new_image)
             
-            # Przesłanie pliku do MinIO
-            success, object_name = minio_service.upload_image(temp_file, db_image.id)
+            # Usuń lokalny plik po przesłaniu do MinIO
+            os.remove(file_path)
             
-            if not success:
-                # Usunięcie rekordu z bazy danych w przypadku błędu
-                db.delete(db_image)
-                db.commit()
-                
-                # Usunięcie tymczasowego pliku
-                os.remove(temp_file)
-                
-                return ImageResponse(
-                    success=False,
-                    message=f"Błąd podczas przesyłania obrazu do MinIO: {object_name}"
-                )
-            
-            # Aktualizacja ścieżki do pliku
-            db_image.filepath = object_name
-            db.commit()
-            db.refresh(db_image)
-            
-            # Usunięcie tymczasowego pliku
-            os.remove(temp_file)
-            
-            return ImageResponse(
-                success=True,
-                message="Obraz został pomyślnie dodany",
-                data=db_image
-            )
+            return new_image
         except Exception as e:
-            return ImageResponse(
-                success=False,
-                message=f"Błąd podczas dodawania obrazu: {str(e)}"
-            )
-    
-    @staticmethod
-    def get_images(db: Session, skip: int = 0, limit: int = 100, dataset_id: Optional[int] = None) -> ImagesResponse:
-        """
-        Pobiera listę obrazów.
-        """
+            logger.error(f"Błąd podczas przesyłania obrazu: {str(e)}")
+            self.db.rollback()
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise HTTPException(status_code=500, detail=f"Błąd podczas przesyłania obrazu: {str(e)}")
+
+    def get_image(self, image_id: int) -> Image:
+        """Pobiera obraz po ID"""
+        image = self.db.query(Image).filter(Image.id == image_id).first()
+        if not image:
+            raise HTTPException(status_code=404, detail="Obraz nie znaleziony")
+        return image
+
+    def get_images(self, skip: int = 0, limit: int = 100, dataset_id: Optional[int] = None) -> List[Image]:
+        """Pobiera listę obrazów"""
+        query = self.db.query(Image)
+        
+        if dataset_id is not None:
+            query = query.filter(Image.dataset_id == dataset_id)
+        
+        return query.offset(skip).limit(limit).all()
+
+    def delete_image(self, image_id: int) -> bool:
+        """Usuwa obraz"""
+        image = self.get_image(image_id)
+        
         try:
-            query = db.query(Image)
+            # Usuń plik z MinIO
+            self.minio_client.remove_object("images", image.path)
             
-            if dataset_id is not None:
-                query = query.filter(Image.dataset_id == dataset_id)
+            # Usuń rekord z bazy danych
+            self.db.delete(image)
+            self.db.commit()
             
-            total = query.count()
-            images = query.offset(skip).limit(limit).all()
-            
-            return ImagesResponse(
-                success=True,
-                message=f"Znaleziono {len(images)} obrazów",
-                data=images,
-                total=total
-            )
+            return True
         except Exception as e:
-            return ImagesResponse(
-                success=False,
-                message=f"Błąd podczas pobierania obrazów: {str(e)}"
-            )
-    
-    @staticmethod
-    def get_image(db: Session, image_id: int) -> ImageResponse:
-        """
-        Pobiera obraz o podanym ID.
-        """
-        try:
-            image = db.query(Image).filter(Image.id == image_id).first()
-            
-            if not image:
-                return ImageResponse(
-                    success=False,
-                    message=f"Obraz o ID {image_id} nie został znaleziony"
-                )
-            
-            return ImageResponse(
-                success=True,
-                message="Obraz został znaleziony",
-                data=image
-            )
-        except Exception as e:
-            return ImageResponse(
-                success=False,
-                message=f"Błąd podczas pobierania obrazu: {str(e)}"
-            )
-    
-    @staticmethod
-    def delete_image(db: Session, image_id: int) -> ImageResponse:
-        """
-        Usuwa obraz o podanym ID.
-        """
-        try:
-            image = db.query(Image).filter(Image.id == image_id).first()
-            
-            if not image:
-                return ImageResponse(
-                    success=False,
-                    message=f"Obraz o ID {image_id} nie został znaleziony"
-                )
-            
-            # Usunięcie pliku z MinIO
-            if image.filepath:
-                minio_service.delete_file(minio_service.IMAGES_BUCKET, image.filepath)
-            
-            # Usunięcie rekordu z bazy danych
-            db.delete(image)
-            db.commit()
-            
-            return ImageResponse(
-                success=True,
-                message=f"Obraz o ID {image_id} został usunięty"
-            )
-        except Exception as e:
-            return ImageResponse(
-                success=False,
-                message=f"Błąd podczas usuwania obrazu: {str(e)}"
-            )
-    
-    @staticmethod
-    def get_image_url(db: Session, image_id: int) -> Dict[str, Any]:
-        """
-        Generuje URL do obrazu.
-        """
-        try:
-            image = db.query(Image).filter(Image.id == image_id).first()
-            
-            if not image:
-                raise HTTPException(status_code=404, detail=f"Obraz o ID {image_id} nie został znaleziony")
-            
-            url = minio_service.get_image_url(image.filepath)
-            
-            if not url:
-                raise HTTPException(status_code=500, detail="Błąd podczas generowania URL")
-            
-            return {
-                "success": True,
-                "url": url,
-                "filename": image.filename
-            }
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Błąd podczas generowania URL: {str(e)}")
-    
-    @staticmethod
-    def update_image_dataset(db: Session, image_id: int, dataset_id: Optional[int]) -> ImageResponse:
-        """
-        Aktualizuje przypisanie obrazu do zbioru danych.
-        """
-        try:
-            image = db.query(Image).filter(Image.id == image_id).first()
-            
-            if not image:
-                return ImageResponse(
-                    success=False,
-                    message=f"Obraz o ID {image_id} nie został znaleziony"
-                )
-            
-            image.dataset_id = dataset_id
-            db.commit()
-            db.refresh(image)
-            
-            return ImageResponse(
-                success=True,
-                message=f"Obraz o ID {image_id} został zaktualizowany",
-                data=image
-            )
-        except Exception as e:
-            return ImageResponse(
-                success=False,
-                message=f"Błąd podczas aktualizacji obrazu: {str(e)}"
-            )
+            logger.error(f"Błąd podczas usuwania obrazu: {str(e)}")
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Błąd podczas usuwania obrazu: {str(e)}")

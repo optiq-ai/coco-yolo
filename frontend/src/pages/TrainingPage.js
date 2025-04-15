@@ -28,7 +28,9 @@ import {
   InputLabel,
   Select,
   Chip,
-  CircularProgress
+  CircularProgress,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import { 
   PlayArrow, 
@@ -49,7 +51,9 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend, 
-  ResponsiveContainer 
+  ResponsiveContainer,
+  BarChart,
+  Bar
 } from 'recharts';
 
 const TrainingPage = () => {

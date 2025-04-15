@@ -1,70 +1,78 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-
 from app.db.session import get_db
+from app.schemas.schemas import ModelCreate, ModelResponse, ModelList
 from app.services.model_service import ModelService
-from app.schemas.schemas import ModelCreate, ModelResponse, ModelsResponse
+from app.worker.tasks import export_model
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/", response_model=ModelResponse)
 def create_model(
-    model: ModelCreate,
+    model_data: ModelCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    Tworzy nowy model.
-    """
-    return ModelService.create_model(db, model)
-
-@router.get("/", response_model=ModelsResponse)
-def get_models(
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    """
-    Pobiera listę modeli.
-    """
-    return ModelService.get_models(db, skip, limit)
+    """Tworzy nowy model"""
+    model_service = ModelService(db)
+    return model_service.create_model(model_data)
 
 @router.get("/{model_id}", response_model=ModelResponse)
 def get_model(
     model_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Pobiera model o podanym ID.
-    """
-    return ModelService.get_model(db, model_id)
+    """Pobiera model po ID"""
+    model_service = ModelService(db)
+    return model_service.get_model(model_id)
 
-@router.delete("/{model_id}", response_model=ModelResponse)
+@router.get("/", response_model=ModelList)
+def get_models(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Pobiera listę modeli"""
+    model_service = ModelService(db)
+    models = model_service.get_models(skip, limit)
+    return {"items": models, "total": len(models)}
+
+@router.put("/{model_id}", response_model=ModelResponse)
+def update_model(
+    model_id: int,
+    model_data: ModelCreate,
+    db: Session = Depends(get_db)
+):
+    """Aktualizuje model"""
+    model_service = ModelService(db)
+    return model_service.update_model(model_id, model_data.dict())
+
+@router.delete("/{model_id}", response_model=bool)
 def delete_model(
     model_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Usuwa model o podanym ID.
-    """
-    return ModelService.delete_model(db, model_id)
+    """Usuwa model"""
+    model_service = ModelService(db)
+    return model_service.delete_model(model_id)
 
-@router.get("/{model_id}/download")
-def get_model_download_url(
+@router.post("/{model_id}/export", response_model=dict)
+def export_model_endpoint(
     model_id: int,
+    format: str = Query(..., description="Format eksportu (onnx, tflite, itp.)"),
     db: Session = Depends(get_db)
 ):
-    """
-    Generuje URL do pobrania modelu.
-    """
-    return ModelService.get_model_download_url(db, model_id)
-
-@router.get("/{model_id}/metrics")
-def get_model_metrics(
-    model_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Pobiera metryki modelu.
-    """
-    return ModelService.get_model_metrics(db, model_id)
+    """Eksportuje model do określonego formatu"""
+    model_service = ModelService(db)
+    model = model_service.get_model(model_id)
+    
+    # Uruchom zadanie asynchroniczne
+    task = export_model.delay(model_id, format)
+    
+    return {
+        "task_id": task.id,
+        "status": "started",
+        "message": f"Rozpoczęto eksport modelu {model_id} do formatu {format}"
+    }

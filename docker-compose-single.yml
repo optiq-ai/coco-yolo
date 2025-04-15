@@ -1,0 +1,9 @@
+version: '2'
+
+services:
+  # Tylko Nginx
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    restart: unless-stopped

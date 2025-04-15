@@ -2,21 +2,18 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Instalacja zależności systemowych
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Kopiowanie pliku requirements.txt
+# Kopiowanie plików wymagań
 COPY requirements.txt .
 
-# Instalacja zależności Pythona
+# Instalacja zależności
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Kopiowanie kodu aplikacji
-COPY ./app ./app
+COPY ./app /app/app
+
+# Ustawienie zmiennych środowiskowych
+ENV PYTHONPATH=/app
+ENV PORT=8000
 
 # Ekspozycja portu
 EXPOSE 8000

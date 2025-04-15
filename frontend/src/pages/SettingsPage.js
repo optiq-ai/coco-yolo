@@ -1,931 +1,846 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Paper, Button, TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Alert, Card, CardContent, Divider, List, ListItem, ListItemText, Switch, FormControlLabel } from '@mui/material';
 import { 
-  Settings, 
+  Container, 
+  Typography, 
+  Grid, 
+  Card, 
+  CardContent, 
+  Button, 
+  TextField, 
+  Box,
+  Tabs,
+  Tab,
+  Switch,
+  FormControlLabel,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress
+} from '@mui/material';
+import { 
   Save, 
-  Refresh,
-  DarkMode,
-  LightMode,
-  Language,
-  Storage,
+  Delete, 
+  Refresh, 
+  CloudUpload, 
+  CloudDownload, 
+  Settings as SettingsIcon,
   Security,
+  Storage,
   Notifications,
-  CloudUpload,
-  CloudDownload
+  Language,
+  ColorLens,
+  AccountCircle,
+  Backup,
+  Speed,
+  DeveloperMode
 } from '@mui/icons-material';
 
 const SettingsPage = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
-    // Ustawienia ogólne
-    darkMode: true,
-    language: 'pl',
-    autoSave: true,
-    saveInterval: 5,
-    
-    // Ustawienia interfejsu
-    showThumbnails: true,
-    thumbnailSize: 'medium',
-    showConfidence: true,
-    showLabelsCount: true,
-    
-    // Ustawienia detekcji
-    defaultModel: 'yolov8n',
-    confidenceThreshold: 0.5,
-    nmsThreshold: 0.45,
-    maxDetections: 100,
-    
-    // Ustawienia treningu
-    defaultEpochs: 100,
-    defaultBatchSize: 16,
-    defaultLearningRate: 0.001,
-    defaultImageSize: 640,
-    defaultAugmentation: true,
-    
-    // Ustawienia powiadomień
-    notifyOnTrainingComplete: true,
-    notifyOnDetectionComplete: true,
-    notifyOnError: true,
-    
-    // Ustawienia przechowywania
-    storageLimit: 10, // GB
-    autoCleanup: true,
-    cleanupThreshold: 80, // %
-    keepBackups: true,
-    backupCount: 3,
-    
-    // Ustawienia zaawansowane
-    useGPU: true,
-    maxGPUMemory: 80, // %
-    workerThreads: 4,
-    enableExperimental: false,
-    debugMode: false
+    general: {
+      darkMode: false,
+      language: 'en',
+      autoSave: true,
+      saveInterval: 5,
+      notifications: true
+    },
+    model: {
+      defaultModel: 'yolov5s',
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      maxDetections: 100,
+      useGPU: true
+    },
+    storage: {
+      storageLocation: 'local',
+      maxImageSize: 10,
+      compressionEnabled: true,
+      compressionQuality: 0.8,
+      autoBackup: false,
+      backupInterval: 24
+    },
+    api: {
+      apiKey: 'sk_test_abcdefghijklmnopqrstuvwxyz',
+      apiEndpoint: 'https://api.example.com/v1',
+      requestTimeout: 30,
+      maxConcurrentRequests: 5,
+      enableLogging: true
+    }
   });
-  
-  const [models, setModels] = useState([]);
-  const [activeTab, setActiveTab] = useState('general');
-  const [unsavedChanges, setUnsavedChanges] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  
-  // Przykładowe dane
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // Fetch settings on component mount
   useEffect(() => {
-    // Symulacja ładowania danych
-    setIsLoading(true);
-    
-    setTimeout(() => {
-      const mockModels = [
-        { id: 'yolov8n', name: 'YOLOv8 Nano', type: 'YOLO', size: 'Mały', params: '3.2M' },
-        { id: 'yolov8s', name: 'YOLOv8 Small', type: 'YOLO', size: 'Średni', params: '11.2M' },
-        { id: 'yolov8m', name: 'YOLOv8 Medium', type: 'YOLO', size: 'Duży', params: '25.9M' },
-        { id: 'yolov8l', name: 'YOLOv8 Large', type: 'YOLO', size: 'Bardzo duży', params: '43.7M' },
-        { id: 'fasterrcnn', name: 'Faster R-CNN', type: 'R-CNN', size: 'Duży', params: '41.8M' },
-        { id: 'ssd', name: 'SSD MobileNet', type: 'SSD', size: 'Mały', params: '4.3M' },
-      ];
-      
-      setModels(mockModels);
-      setIsLoading(false);
-    }, 1000);
+    fetchSettings();
   }, []);
-  
-  // Obsługa zmiany zakładki
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-  };
-  
-  // Obsługa zmiany ustawień
-  const handleSettingChange = (setting, value) => {
-    setSettings({
-      ...settings,
-      [setting]: value
-    });
-    
-    setUnsavedChanges(true);
-    setSaveSuccess(false);
-  };
-  
-  // Obsługa zapisywania ustawień
-  const handleSaveSettings = () => {
-    setIsLoading(true);
-    
-    // Symulacja zapisywania ustawień
-    setTimeout(() => {
-      setIsLoading(false);
-      setUnsavedChanges(false);
-      setSaveSuccess(true);
-      
-      // Ukrycie komunikatu o sukcesie po 3 sekundach
+
+  // Fetch settings from API
+  const fetchSettings = async () => {
+    setLoading(true);
+    try {
+      // In a real app, this would fetch from an API
+      // For now, we'll just use the default settings
       setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-    }, 1000);
-  };
-  
-  // Obsługa resetowania ustawień
-  const handleResetSettings = () => {
-    if (window.confirm('Czy na pewno chcesz przywrócić ustawienia domyślne? Ta operacja nie może być cofnięta.')) {
-      setIsLoading(true);
-      
-      // Symulacja resetowania ustawień
-      setTimeout(() => {
-        setSettings({
-          // Ustawienia ogólne
-          darkMode: true,
-          language: 'pl',
-          autoSave: true,
-          saveInterval: 5,
-          
-          // Ustawienia interfejsu
-          showThumbnails: true,
-          thumbnailSize: 'medium',
-          showConfidence: true,
-          showLabelsCount: true,
-          
-          // Ustawienia detekcji
-          defaultModel: 'yolov8n',
-          confidenceThreshold: 0.5,
-          nmsThreshold: 0.45,
-          maxDetections: 100,
-          
-          // Ustawienia treningu
-          defaultEpochs: 100,
-          defaultBatchSize: 16,
-          defaultLearningRate: 0.001,
-          defaultImageSize: 640,
-          defaultAugmentation: true,
-          
-          // Ustawienia powiadomień
-          notifyOnTrainingComplete: true,
-          notifyOnDetectionComplete: true,
-          notifyOnError: true,
-          
-          // Ustawienia przechowywania
-          storageLimit: 10,
-          autoCleanup: true,
-          cleanupThreshold: 80,
-          keepBackups: true,
-          backupCount: 3,
-          
-          // Ustawienia zaawansowane
-          useGPU: true,
-          maxGPUMemory: 80,
-          workerThreads: 4,
-          enableExperimental: false,
-          debugMode: false
-        });
-        
-        setIsLoading(false);
-        setUnsavedChanges(false);
-        setSaveSuccess(true);
-        
-        // Ukrycie komunikatu o sukcesie po 3 sekundach
-        setTimeout(() => {
-          setSaveSuccess(false);
-        }, 3000);
+        setLoading(false);
       }, 1000);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      setLoading(false);
     }
   };
-  
-  // Obsługa eksportu ustawień
-  const handleExportSettings = () => {
-    const settingsJson = JSON.stringify(settings, null, 2);
-    const blob = new Blob([settingsJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'yolo-coco-settings.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+  // Handle tab change
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
   };
-  
-  // Obsługa importu ustawień
-  const handleImportSettings = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      
-      if (file) {
-        const reader = new FileReader();
-        
-        reader.onload = (event) => {
-          try {
-            const importedSettings = JSON.parse(event.target.result);
-            setSettings(importedSettings);
-            setUnsavedChanges(true);
-            alert('Ustawienia zostały zaimportowane pomyślnie.');
-          } catch (error) {
-            alert('Błąd podczas importowania ustawień. Upewnij się, że plik jest prawidłowym plikiem JSON.');
-          }
-        };
-        
-        reader.readAsText(file);
+
+  // Handle setting change
+  const handleSettingChange = (category, setting, value) => {
+    setSettings({
+      ...settings,
+      [category]: {
+        ...settings[category],
+        [setting]: value
       }
-    };
-    
-    input.click();
+    });
   };
-  
-  // Renderowanie zakładki ustawień ogólnych
-  const renderGeneralSettings = () => {
-    return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Ustawienia ogólne
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.darkMode}
-                  onChange={(e) => handleSettingChange('darkMode', e.target.checked)}
-                />
-              }
-              label="Tryb ciemny"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Włącz ciemny motyw interfejsu
-            </Typography>
-            
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Język</InputLabel>
-              <Select
-                value={settings.language}
-                onChange={(e) => handleSettingChange('language', e.target.value)}
-                label="Język"
-              >
-                <MenuItem value="pl">Polski</MenuItem>
-                <MenuItem value="en">English</MenuItem>
-                <MenuItem value="de">Deutsch</MenuItem>
-                <MenuItem value="fr">Français</MenuItem>
-                <MenuItem value="es">Español</MenuItem>
-              </Select>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                Język interfejsu użytkownika
-              </Typography>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.autoSave}
-                  onChange={(e) => handleSettingChange('autoSave', e.target.checked)}
-                />
-              }
-              label="Automatyczne zapisywanie"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Automatycznie zapisuj zmiany w etykietach
-            </Typography>
-            
-            <TextField
-              fullWidth
-              label="Interwał zapisywania (min)"
-              type="number"
-              value={settings.saveInterval}
-              onChange={(e) => handleSettingChange('saveInterval', parseInt(e.target.value))}
-              disabled={!settings.autoSave}
-              inputProps={{ min: 1, max: 60 }}
-              sx={{ mb: 3 }}
-            />
-          </Grid>
-        </Grid>
-        
-        <Divider sx={{ my: 3 }} />
-        
-        <Typography variant="h6" gutterBottom>
-          Ustawienia interfejsu
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.showThumbnails}
-                  onChange={(e) => handleSettingChange('showThumbnails', e.target.checked)}
-                />
-              }
-              label="Pokaż miniatury"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Wyświetlaj miniatury obrazów na liście
-            </Typography>
-            
-            <FormControl fullWidth sx={{ mb: 3 }} disabled={!settings.showThumbnails}>
-              <InputLabel>Rozmiar miniatur</InputLabel>
-              <Select
-                value={settings.thumbnailSize}
-                onChange={(e) => handleSettingChange('thumbnailSize', e.target.value)}
-                label="Rozmiar miniatur"
-              >
-                <MenuItem value="small">Mały</MenuItem>
-                <MenuItem value="medium">Średni</MenuItem>
-                <MenuItem value="large">Duży</MenuItem>
-              </Select>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                Rozmiar miniatur na liście obrazów
-              </Typography>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.showConfidence}
-                  onChange={(e) => handleSettingChange('showConfidence', e.target.checked)}
-                />
-              }
-              label="Pokaż pewność detekcji"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Wyświetlaj wartość pewności dla każdej detekcji
-            </Typography>
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.showLabelsCount}
-                  onChange={(e) => handleSettingChange('showLabelsCount', e.target.checked)}
-                />
-              }
-              label="Pokaż liczbę etykiet"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Wyświetlaj liczbę etykiet dla każdego obrazu
-            </Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    );
+
+  // Handle save settings
+  const handleSaveSettings = async () => {
+    setLoading(true);
+    try {
+      // In a real app, this would save to an API
+      console.log('Saving settings:', settings);
+      setTimeout(() => {
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      setLoading(false);
+    }
   };
-  
-  // Renderowanie zakładki ustawień detekcji
-  const renderDetectionSettings = () => {
-    return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Ustawienia detekcji obiektów
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Domyślny model</InputLabel>
-              <Select
-                value={settings.defaultModel}
-                onChange={(e) => handleSettingChange('defaultModel', e.target.value)}
-                label="Domyślny model"
-              >
-                {models.map(model => (
-                  <MenuItem key={model.id} value={model.id}>
-                    {model.name} ({model.type}) - {model.size}
-                  </MenuItem>
-                ))}
-              </Select>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                Model używany domyślnie do detekcji obiektów
-              </Typography>
-            </FormControl>
-            
-            <TextField
-              fullWidth
-              label="Próg pewności"
-              type="number"
-              value={settings.confidenceThreshold}
-              onChange={(e) => handleSettingChange('confidenceThreshold', parseFloat(e.target.value))}
-              inputProps={{ step: 0.05, min: 0.05, max: 0.95 }}
-              sx={{ mb: 3 }}
-            />
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -2.5, mb: 2 }}>
-              Minimalny próg pewności dla detekcji (0.05 - 0.95)
-            </Typography>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Próg NMS"
-              type="number"
-              value={settings.nmsThreshold}
-              onChange={(e) => handleSettingChange('nmsThreshold', parseFloat(e.target.value))}
-              inputProps={{ step: 0.05, min: 0.05, max: 0.95 }}
-              sx={{ mb: 3 }}
-            />
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -2.5, mb: 2 }}>
-              Próg Non-Maximum Suppression (0.05 - 0.95)
-            </Typography>
-            
-            <TextField
-              fullWidth
-              label="Maksymalna liczba detekcji"
-              type="number"
-              value={settings.maxDetections}
-              onChange={(e) => handleSettingChange('maxDetections', parseInt(e.target.value))}
-              inputProps={{ min: 10, max: 1000 }}
-              sx={{ mb: 3 }}
-            />
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -2.5, mb: 2 }}>
-              Maksymalna liczba detekcji na obraz (10 - 1000)
-            </Typography>
-          </Grid>
-        </Grid>
-        
-        <Divider sx={{ my: 3 }} />
-        
-        <Typography variant="h6" gutterBottom>
-          Ustawienia treningu
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Domyślna liczba epok"
-              type="number"
-              value={settings.defaultEpochs}
-              onChange={(e) => handleSettingChange('defaultEpochs', parseInt(e.target.value))}
-              inputProps={{ min: 1, max: 1000 }}
-              sx={{ mb: 3 }}
-            />
-            
-            <TextField
-              fullWidth
-              label="Domyślny rozmiar batcha"
-              type="number"
-              value={settings.defaultBatchSize}
-              onChange={(e) => handleSettingChange('defaultBatchSize', parseInt(e.target.value))}
-              inputProps={{ min: 1, max: 128 }}
-              sx={{ mb: 3 }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Domyślny współczynnik uczenia"
-              type="number"
-              value={settings.defaultLearningRate}
-              onChange={(e) => handleSettingChange('defaultLearningRate', parseFloat(e.target.value))}
-              inputProps={{ step: 0.0001, min: 0.0001, max: 0.1 }}
-              sx={{ mb: 3 }}
-            />
-            
-            <TextField
-              fullWidth
-              label="Domyślny rozmiar obrazu"
-              type="number"
-              value={settings.defaultImageSize}
-              onChange={(e) => handleSettingChange('defaultImageSize', parseInt(e.target.value))}
-              inputProps={{ step: 32, min: 32, max: 1280 }}
-              sx={{ mb: 3 }}
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.defaultAugmentation}
-                  onChange={(e) => handleSettingChange('defaultAugmentation', e.target.checked)}
-                />
-              }
-              label="Domyślna augmentacja danych"
-            />
-          </Grid>
-        </Grid>
-      </Box>
-    );
+
+  // Handle reset settings
+  const handleResetSettings = () => {
+    setResetDialogOpen(true);
   };
-  
-  // Renderowanie zakładki ustawień powiadomień
-  const renderNotificationSettings = () => {
-    return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Ustawienia powiadomień
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifyOnTrainingComplete}
-                  onChange={(e) => handleSettingChange('notifyOnTrainingComplete', e.target.checked)}
-                />
-              }
-              label="Powiadomienie o zakończeniu treningu"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Otrzymuj powiadomienia po zakończeniu treningu modelu
-            </Typography>
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifyOnDetectionComplete}
-                  onChange={(e) => handleSettingChange('notifyOnDetectionComplete', e.target.checked)}
-                />
-              }
-              label="Powiadomienie o zakończeniu detekcji"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Otrzymuj powiadomienia po zakończeniu detekcji obiektów
-            </Typography>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifyOnError}
-                  onChange={(e) => handleSettingChange('notifyOnError', e.target.checked)}
-                />
-              }
-              label="Powiadomienie o błędach"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Otrzymuj powiadomienia o błędach w systemie
-            </Typography>
-          </Grid>
-        </Grid>
-        
-        <Divider sx={{ my: 3 }} />
-        
-        <Typography variant="h6" gutterBottom>
-          Ustawienia przechowywania
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Limit przechowywania (GB)"
-              type="number"
-              value={settings.storageLimit}
-              onChange={(e) => handleSettingChange('storageLimit', parseInt(e.target.value))}
-              inputProps={{ min: 1, max: 1000 }}
-              sx={{ mb: 3 }}
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.autoCleanup}
-                  onChange={(e) => handleSettingChange('autoCleanup', e.target.checked)}
-                />
-              }
-              label="Automatyczne czyszczenie"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Automatycznie usuwaj stare dane, gdy przekroczony zostanie próg
-            </Typography>
-            
-            <TextField
-              fullWidth
-              label="Próg czyszczenia (%)"
-              type="number"
-              value={settings.cleanupThreshold}
-              onChange={(e) => handleSettingChange('cleanupThreshold', parseInt(e.target.value))}
-              disabled={!settings.autoCleanup}
-              inputProps={{ min: 50, max: 95 }}
-              sx={{ mb: 3 }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.keepBackups}
-                  onChange={(e) => handleSettingChange('keepBackups', e.target.checked)}
-                />
-              }
-              label="Przechowuj kopie zapasowe"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Twórz kopie zapasowe danych i ustawień
-            </Typography>
-            
-            <TextField
-              fullWidth
-              label="Liczba kopii zapasowych"
-              type="number"
-              value={settings.backupCount}
-              onChange={(e) => handleSettingChange('backupCount', parseInt(e.target.value))}
-              disabled={!settings.keepBackups}
-              inputProps={{ min: 1, max: 10 }}
-              sx={{ mb: 3 }}
-            />
-          </Grid>
-        </Grid>
-      </Box>
-    );
+
+  // Confirm reset settings
+  const confirmResetSettings = async () => {
+    setLoading(true);
+    try {
+      // In a real app, this would reset settings to defaults via API
+      setSettings({
+        general: {
+          darkMode: false,
+          language: 'en',
+          autoSave: true,
+          saveInterval: 5,
+          notifications: true
+        },
+        model: {
+          defaultModel: 'yolov5s',
+          confidenceThreshold: 0.5,
+          iouThreshold: 0.45,
+          maxDetections: 100,
+          useGPU: true
+        },
+        storage: {
+          storageLocation: 'local',
+          maxImageSize: 10,
+          compressionEnabled: true,
+          compressionQuality: 0.8,
+          autoBackup: false,
+          backupInterval: 24
+        },
+        api: {
+          apiKey: 'sk_test_abcdefghijklmnopqrstuvwxyz',
+          apiEndpoint: 'https://api.example.com/v1',
+          requestTimeout: 30,
+          maxConcurrentRequests: 5,
+          enableLogging: true
+        }
+      });
+      setResetDialogOpen(false);
+      setTimeout(() => {
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      setLoading(false);
+      setResetDialogOpen(false);
+    }
   };
-  
-  // Renderowanie zakładki ustawień zaawansowanych
-  const renderAdvancedSettings = () => {
-    return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Ustawienia zaawansowane
+
+  // Handle export settings
+  const handleExportSettings = () => {
+    setExportDialogOpen(true);
+  };
+
+  // Confirm export settings
+  const confirmExportSettings = () => {
+    try {
+      // In a real app, this would generate a file for download
+      const settingsJson = JSON.stringify(settings, null, 2);
+      const blob = new Blob([settingsJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'yolo-coco-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
+    } catch (error) {
+      console.error('Error exporting settings:', error);
+      setExportDialogOpen(false);
+    }
+  };
+
+  // Handle import settings
+  const handleImportSettings = () => {
+    setImportDialogOpen(true);
+  };
+
+  // Confirm import settings
+  const confirmImportSettings = (event) => {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const importedSettings = JSON.parse(e.target.result);
+          setSettings(importedSettings);
+          setImportDialogOpen(false);
+        } catch (parseError) {
+          console.error('Error parsing settings file:', parseError);
+        }
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Error importing settings:', error);
+      setImportDialogOpen(false);
+    }
+  };
+
+  return (
+    <Container maxWidth="xl">
+      <Box sx={{ my: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Settings
         </Typography>
         
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Uwaga! Zmiana tych ustawień może wpłynąć na wydajność i stabilność aplikacji. Zmieniaj je tylko, jeśli wiesz, co robisz.
-        </Alert>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.useGPU}
-                  onChange={(e) => handleSettingChange('useGPU', e.target.checked)}
-                />
-              }
-              label="Używaj GPU"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Używaj akceleracji GPU do detekcji i treningu
-            </Typography>
-            
-            <TextField
-              fullWidth
-              label="Maksymalne użycie pamięci GPU (%)"
-              type="number"
-              value={settings.maxGPUMemory}
-              onChange={(e) => handleSettingChange('maxGPUMemory', parseInt(e.target.value))}
-              disabled={!settings.useGPU}
-              inputProps={{ min: 10, max: 100 }}
-              sx={{ mb: 3 }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Liczba wątków roboczych"
-              type="number"
-              value={settings.workerThreads}
-              onChange={(e) => handleSettingChange('workerThreads', parseInt(e.target.value))}
-              inputProps={{ min: 1, max: 16 }}
-              sx={{ mb: 3 }}
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.enableExperimental}
-                  onChange={(e) => handleSettingChange('enableExperimental', e.target.checked)}
-                />
-              }
-              label="Włącz funkcje eksperymentalne"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Włącz eksperymentalne funkcje, które mogą być niestabilne
-            </Typography>
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.debugMode}
-                  onChange={(e) => handleSettingChange('debugMode', e.target.checked)}
-                />
-              }
-              label="Tryb debugowania"
-            />
-            
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -1, mb: 2 }}>
-              Włącz szczegółowe logowanie dla celów debugowania
-            </Typography>
-          </Grid>
-        </Grid>
-        
-        <Divider sx={{ my: 3 }} />
-        
-        <Typography variant="h6" gutterBottom>
-          Zarządzanie ustawieniami
-        </Typography>
-        
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               variant="outlined"
-              fullWidth
-              startIcon={<CloudDownload />}
-              onClick={handleExportSettings}
-            >
-              Eksportuj ustawienia
-            </Button>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              variant="outlined"
-              fullWidth
               startIcon={<CloudUpload />}
               onClick={handleImportSettings}
             >
-              Importuj ustawienia
+              Import
             </Button>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
+            
+            <Button
+              variant="outlined"
+              startIcon={<CloudDownload />}
+              onClick={handleExportSettings}
+            >
+              Export
+            </Button>
+            
             <Button
               variant="outlined"
               color="error"
-              fullWidth
+              startIcon={<Delete />}
               onClick={handleResetSettings}
             >
-              Resetuj ustawienia
+              Reset
             </Button>
-          </Grid>
-        </Grid>
-      </Box>
-    );
-  };
-
-  return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Ustawienia
-      </Typography>
-      
-      <Box sx={{ mb: 3 }}>
-        <Grid container spacing={1}>
-          <Grid item>
+            
             <Button
-              variant={activeTab === 'general' ? 'contained' : 'outlined'}
-              onClick={() => handleTabChange('general')}
-              startIcon={<Settings />}
+              variant="contained"
+              startIcon={<Save />}
+              onClick={handleSaveSettings}
             >
-              Ogólne
+              Save
             </Button>
-          </Grid>
-          
-          <Grid item>
-            <Button
-              variant={activeTab === 'detection' ? 'contained' : 'outlined'}
-              onClick={() => handleTabChange('detection')}
-              startIcon={<Settings />}
-            >
-              Detekcja i trening
-            </Button>
-          </Grid>
-          
-          <Grid item>
-            <Button
-              variant={activeTab === 'notifications' ? 'contained' : 'outlined'}
-              onClick={() => handleTabChange('notifications')}
-              startIcon={<Notifications />}
-            >
-              Powiadomienia
-            </Button>
-          </Grid>
-          
-          <Grid item>
-            <Button
-              variant={activeTab === 'advanced' ? 'contained' : 'outlined'}
-              onClick={() => handleTabChange('advanced')}
-              startIcon={<Settings />}
-            >
-              Zaawansowane
-            </Button>
-          </Grid>
-        </Grid>
-      </Box>
-      
-      <Paper elevation={2} sx={{ p: 3 }}>
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          </Box>
+        </Box>
+        
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
             <CircularProgress />
           </Box>
         ) : (
-          <>
-            {activeTab === 'general' && renderGeneralSettings()}
-            {activeTab === 'detection' && renderDetectionSettings()}
-            {activeTab === 'notifications' && renderNotificationSettings()}
-            {activeTab === 'advanced' && renderAdvancedSettings()}
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={3}>
+              <Card>
+                <CardContent>
+                  <Tabs
+                    orientation="vertical"
+                    variant="scrollable"
+                    value={activeTab}
+                    onChange={handleTabChange}
+                    sx={{ borderRight: 1, borderColor: 'divider' }}
+                  >
+                    <Tab icon={<SettingsIcon />} label="General" />
+                    <Tab icon={<Speed />} label="Model" />
+                    <Tab icon={<Storage />} label="Storage" />
+                    <Tab icon={<DeveloperMode />} label="API" />
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </Grid>
             
-            <Divider sx={{ my: 3 }} />
-            
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
-                {unsavedChanges && (
-                  <Typography variant="body2" color="warning.main">
-                    Masz niezapisane zmiany
-                  </Typography>
-                )}
-                
-                {saveSuccess && (
-                  <Typography variant="body2" color="success.main">
-                    Ustawienia zostały zapisane pomyślnie
-                  </Typography>
-                )}
-              </Box>
-              
-              <Box>
-                <Button
-                  variant="outlined"
-                  onClick={handleResetSettings}
-                  sx={{ mr: 2 }}
-                >
-                  Anuluj zmiany
-                </Button>
-                
-                <Button
-                  variant="contained"
-                  startIcon={<Save />}
-                  onClick={handleSaveSettings}
-                  disabled={!unsavedChanges}
-                >
-                  Zapisz ustawienia
-                </Button>
-              </Box>
-            </Box>
-          </>
+            <Grid item xs={12} md={9}>
+              <Card>
+                <CardContent>
+                  {activeTab === 0 && (
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        General Settings
+                      </Typography>
+                      
+                      <List>
+                        <ListItem>
+                          <ListItemIcon>
+                            <ColorLens />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Dark Mode" 
+                            secondary="Enable dark theme for the application"
+                          />
+                          <Switch
+                            checked={settings.general.darkMode}
+                            onChange={(e) => handleSettingChange('general', 'darkMode', e.target.checked)}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Language />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Language" 
+                            secondary="Select your preferred language"
+                          />
+                          <TextField
+                            select
+                            value={settings.general.language}
+                            onChange={(e) => handleSettingChange('general', 'language', e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 150 }}
+                            SelectProps={{
+                              native: true,
+                            }}
+                          >
+                            <option value="en">English</option>
+                            <option value="es">Español</option>
+                            <option value="fr">Français</option>
+                            <option value="de">Deutsch</option>
+                            <option value="pl">Polski</option>
+                          </TextField>
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Save />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Auto Save" 
+                            secondary="Automatically save annotations while editing"
+                          />
+                          <Switch
+                            checked={settings.general.autoSave}
+                            onChange={(e) => handleSettingChange('general', 'autoSave', e.target.checked)}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Save />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Save Interval (minutes)" 
+                            secondary="How often to auto-save annotations"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.general.saveInterval}
+                            onChange={(e) => handleSettingChange('general', 'saveInterval', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            disabled={!settings.general.autoSave}
+                            InputProps={{ inputProps: { min: 1, max: 60 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Notifications />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Notifications" 
+                            secondary="Enable desktop notifications"
+                          />
+                          <Switch
+                            checked={settings.general.notifications}
+                            onChange={(e) => handleSettingChange('general', 'notifications', e.target.checked)}
+                          />
+                        </ListItem>
+                      </List>
+                    </Box>
+                  )}
+                  
+                  {activeTab === 1 && (
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        Model Settings
+                      </Typography>
+                      
+                      <List>
+                        <ListItem>
+                          <ListItemIcon>
+                            <SettingsIcon />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Default Model" 
+                            secondary="Select the default detection model"
+                          />
+                          <TextField
+                            select
+                            value={settings.model.defaultModel}
+                            onChange={(e) => handleSettingChange('model', 'defaultModel', e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 150 }}
+                            SelectProps={{
+                              native: true,
+                            }}
+                          >
+                            <option value="yolov5n">YOLOv5n (Nano)</option>
+                            <option value="yolov5s">YOLOv5s (Small)</option>
+                            <option value="yolov5m">YOLOv5m (Medium)</option>
+                            <option value="yolov5l">YOLOv5l (Large)</option>
+                            <option value="yolov5x">YOLOv5x (XLarge)</option>
+                            <option value="yolov8n">YOLOv8n (Nano)</option>
+                            <option value="yolov8s">YOLOv8s (Small)</option>
+                            <option value="yolov8m">YOLOv8m (Medium)</option>
+                            <option value="yolov8l">YOLOv8l (Large)</option>
+                            <option value="yolov8x">YOLOv8x (XLarge)</option>
+                          </TextField>
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <SettingsIcon />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Confidence Threshold" 
+                            secondary="Minimum confidence score for detections (0-1)"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.model.confidenceThreshold}
+                            onChange={(e) => handleSettingChange('model', 'confidenceThreshold', parseFloat(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 0, max: 1, step: 0.05 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <SettingsIcon />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="IoU Threshold" 
+                            secondary="Intersection over Union threshold for NMS (0-1)"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.model.iouThreshold}
+                            onChange={(e) => handleSettingChange('model', 'iouThreshold', parseFloat(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 0, max: 1, step: 0.05 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <SettingsIcon />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Max Detections" 
+                            secondary="Maximum number of detections per image"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.model.maxDetections}
+                            onChange={(e) => handleSettingChange('model', 'maxDetections', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 1, max: 1000 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Speed />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Use GPU" 
+                            secondary="Enable GPU acceleration for inference (if available)"
+                          />
+                          <Switch
+                            checked={settings.model.useGPU}
+                            onChange={(e) => handleSettingChange('model', 'useGPU', e.target.checked)}
+                          />
+                        </ListItem>
+                      </List>
+                    </Box>
+                  )}
+                  
+                  {activeTab === 2 && (
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        Storage Settings
+                      </Typography>
+                      
+                      <List>
+                        <ListItem>
+                          <ListItemIcon>
+                            <Storage />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Storage Location" 
+                            secondary="Where to store images and annotations"
+                          />
+                          <TextField
+                            select
+                            value={settings.storage.storageLocation}
+                            onChange={(e) => handleSettingChange('storage', 'storageLocation', e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 150 }}
+                            SelectProps={{
+                              native: true,
+                            }}
+                          >
+                            <option value="local">Local Storage</option>
+                            <option value="s3">Amazon S3</option>
+                            <option value="gcs">Google Cloud Storage</option>
+                            <option value="azure">Azure Blob Storage</option>
+                          </TextField>
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Storage />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Max Image Size (MB)" 
+                            secondary="Maximum size for uploaded images"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.storage.maxImageSize}
+                            onChange={(e) => handleSettingChange('storage', 'maxImageSize', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 1, max: 100 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Storage />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Image Compression" 
+                            secondary="Enable image compression to save storage space"
+                          />
+                          <Switch
+                            checked={settings.storage.compressionEnabled}
+                            onChange={(e) => handleSettingChange('storage', 'compressionEnabled', e.target.checked)}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Storage />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Compression Quality" 
+                            secondary="Image compression quality (0-1)"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.storage.compressionQuality}
+                            onChange={(e) => handleSettingChange('storage', 'compressionQuality', parseFloat(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            disabled={!settings.storage.compressionEnabled}
+                            InputProps={{ inputProps: { min: 0.1, max: 1, step: 0.1 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Backup />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Auto Backup" 
+                            secondary="Automatically backup data"
+                          />
+                          <Switch
+                            checked={settings.storage.autoBackup}
+                            onChange={(e) => handleSettingChange('storage', 'autoBackup', e.target.checked)}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <Backup />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Backup Interval (hours)" 
+                            secondary="How often to backup data"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.storage.backupInterval}
+                            onChange={(e) => handleSettingChange('storage', 'backupInterval', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            disabled={!settings.storage.autoBackup}
+                            InputProps={{ inputProps: { min: 1, max: 168 } }}
+                          />
+                        </ListItem>
+                      </List>
+                    </Box>
+                  )}
+                  
+                  {activeTab === 3 && (
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        API Settings
+                      </Typography>
+                      
+                      <List>
+                        <ListItem>
+                          <ListItemIcon>
+                            <Security />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="API Key" 
+                            secondary="Your API key for external services"
+                          />
+                          <TextField
+                            type="password"
+                            value={settings.api.apiKey}
+                            onChange={(e) => handleSettingChange('api', 'apiKey', e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 250 }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <DeveloperMode />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="API Endpoint" 
+                            secondary="Base URL for API requests"
+                          />
+                          <TextField
+                            value={settings.api.apiEndpoint}
+                            onChange={(e) => handleSettingChange('api', 'apiEndpoint', e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 250 }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <DeveloperMode />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Request Timeout (seconds)" 
+                            secondary="Maximum time to wait for API responses"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.api.requestTimeout}
+                            onChange={(e) => handleSettingChange('api', 'requestTimeout', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 1, max: 300 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <DeveloperMode />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Max Concurrent Requests" 
+                            secondary="Maximum number of simultaneous API requests"
+                          />
+                          <TextField
+                            type="number"
+                            value={settings.api.maxConcurrentRequests}
+                            onChange={(e) => handleSettingChange('api', 'maxConcurrentRequests', parseInt(e.target.value))}
+                            variant="outlined"
+                            size="small"
+                            sx={{ width: 100 }}
+                            InputProps={{ inputProps: { min: 1, max: 20 } }}
+                          />
+                        </ListItem>
+                        
+                        <Divider />
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <DeveloperMode />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="API Logging" 
+                            secondary="Enable detailed logging of API requests"
+                          />
+                          <Switch
+                            checked={settings.api.enableLogging}
+                            onChange={(e) => handleSettingChange('api', 'enableLogging', e.target.checked)}
+                          />
+                        </ListItem>
+                      </List>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
         )}
-      </Paper>
-    </Box>
+      </Box>
+      
+      {/* Reset Settings Dialog */}
+      <Dialog open={resetDialogOpen} onClose={() => setResetDialogOpen(false)}>
+        <DialogTitle>Reset Settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Are you sure you want to reset all settings to their default values? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+          <Button onClick={confirmResetSettings} color="error" variant="contained">
+            Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Export Settings Dialog */}
+      <Dialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)}>
+        <DialogTitle>Export Settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Export your settings as a JSON file that can be imported later or on another device.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportDialogOpen(false)}>Cancel</Button>
+          <Button onClick={confirmExportSettings} color="primary" variant="contained">
+            Export
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Import Settings Dialog */}
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)}>
+        <DialogTitle>Import Settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" gutterBottom>
+            Import settings from a previously exported JSON file.
+          </Typography>
+          <Button
+            variant="contained"
+            component="label"
+            startIcon={<CloudUpload />}
+            sx={{ mt: 2 }}
+          >
+            Select File
+            <input
+              type="file"
+              accept=".json"
+              hidden
+              onChange={confirmImportSettings}
+            />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
-
-// Komponent CircularProgress
-function CircularProgress() {
-  return (
-    <div style={{ 
-      display: 'inline-block',
-      width: 40,
-      height: 40,
-      border: '4px solid rgba(63, 81, 181, 0.1)',
-      borderRadius: '50%',
-      borderTopColor: '#3f51b5',
-      animation: 'spin 1s linear infinite',
-    }} />
-  );
-}
-
-// Komponent Switch
-function Switch({ checked, onChange }) {
-  return (
-    <div style={{ 
-      display: 'inline-block',
-      width: 40,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: checked ? '#3f51b5' : '#e0e0e0',
-      position: 'relative',
-      cursor: 'pointer',
-      transition: 'background-color 0.3s',
-    }} onClick={onChange ? () => onChange({ target: { checked: !checked } }) : undefined}>
-      <div style={{
-        position: 'absolute',
-        top: 2,
-        left: checked ? 22 : 2,
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: 'white',
-        transition: 'left 0.3s',
-      }} />
-    </div>
-  );
-}
-
-// Komponent FormControlLabel
-function FormControlLabel({ control, label, sx }) {
-  return (
-    <div style={{ 
-      display: 'flex',
-      alignItems: 'center',
-      marginBottom: sx?.mb === 1 ? '8px' : 0,
-      display: sx?.display === 'block' ? 'block' : 'flex',
-    }}>
-      {control}
-      <span style={{ marginLeft: 8 }}>{label}</span>
-    </div>
-  );
-}
 
 export default SettingsPage;

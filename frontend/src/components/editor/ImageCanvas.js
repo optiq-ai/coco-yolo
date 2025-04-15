@@ -1,663 +1,493 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Stage, Layer, Rect, Line, Image as KonvaImage, Circle, Text } from 'react-konva';
-import { Box, Typography, Paper, IconButton, ButtonGroup, Tooltip, Slider, FormControlLabel, Switch, Grid } from '@mui/material';
-import { 
-  Square, 
-  Polyline, 
-  PanTool, 
-  ZoomIn, 
-  ZoomOut, 
-  Delete, 
-  Undo, 
-  Redo, 
-  Save, 
-  Visibility, 
-  VisibilityOff,
-  ColorLens
-} from '@mui/icons-material';
+import { Stage, Layer, Rect, Image as KonvaImage, Text, Circle } from 'react-konva';
+import { Button, IconButton, Box, Typography, Slider, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { ZoomIn, ZoomOut, Delete, Edit, Save, Undo, Redo, PanTool } from '@mui/icons-material';
+import './ImageCanvas.css';
 
-const ImageCanvas = ({ 
-  imageUrl, 
-  annotations = [], 
-  classes = [], 
-  onAnnotationChange,
-  selectedClass = 0
-}) => {
+const ImageCanvas = ({ imageUrl, annotations = [], classes = [], onSave, readOnly = false }) => {
   const [image, setImage] = useState(null);
-  const [tool, setTool] = useState('select'); // 'select', 'bbox', 'polygon'
-  const [currentAnnotation, setCurrentAnnotation] = useState(null);
-  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [showLabels, setShowLabels] = useState(true);
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+  const [currentAnnotations, setCurrentAnnotations] = useState(annotations);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  
+  const [mode, setMode] = useState('view'); // view, draw, edit, pan
+  const [drawingRect, setDrawingRect] = useState(null);
+  const [selectedClassId, setSelectedClassId] = useState(classes.length > 0 ? classes[0].id : null);
   const stageRef = useRef(null);
-  const imageRef = useRef(null);
-  
-  // Załadowanie obrazu
+  const containerRef = useRef(null);
+
+  // Load image
   useEffect(() => {
-    if (imageUrl) {
-      const img = new window.Image();
-      img.crossOrigin = 'Anonymous';
-      img.src = imageUrl;
-      img.onload = () => {
-        setImage(img);
-      };
-    }
+    if (!imageUrl) return;
+
+    const img = new window.Image();
+    img.src = imageUrl;
+    img.onload = () => {
+      setImage(img);
+      
+      // Reset view when new image is loaded
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+      setSelectedAnnotation(null);
+    };
   }, [imageUrl]);
-  
-  // Zapisanie stanu do historii
+
+  // Initialize history when annotations change from props
+  useEffect(() => {
+    setCurrentAnnotations(annotations);
+    setHistory([annotations]);
+    setHistoryIndex(0);
+  }, [annotations]);
+
+  // Save current state to history when annotations change
   const saveToHistory = (newAnnotations) => {
+    // Remove future history if we're not at the end
     const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push([...newAnnotations]);
+    newHistory.push(newAnnotations);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   };
-  
-  // Cofnięcie zmiany
+
+  // Handle undo
   const handleUndo = () => {
     if (historyIndex > 0) {
       setHistoryIndex(historyIndex - 1);
-      onAnnotationChange(history[historyIndex - 1]);
+      setCurrentAnnotations(history[historyIndex - 1]);
     }
   };
-  
-  // Ponowienie zmiany
+
+  // Handle redo
   const handleRedo = () => {
     if (historyIndex < history.length - 1) {
       setHistoryIndex(historyIndex + 1);
-      onAnnotationChange(history[historyIndex + 1]);
+      setCurrentAnnotations(history[historyIndex + 1]);
     }
   };
-  
-  // Obsługa zmiany narzędzia
-  const handleToolChange = (newTool) => {
-    setTool(newTool);
-    setSelectedAnnotation(null);
-    setCurrentAnnotation(null);
+
+  // Handle zoom in
+  const handleZoomIn = () => {
+    setScale(scale * 1.2);
   };
-  
-  // Obsługa przybliżania/oddalania
-  const handleZoom = (direction) => {
-    const newScale = direction === 'in' ? scale * 1.2 : scale / 1.2;
-    setScale(Math.min(Math.max(0.1, newScale), 5));
+
+  // Handle zoom out
+  const handleZoomOut = () => {
+    setScale(scale / 1.2);
   };
-  
-  // Obsługa rozpoczęcia rysowania
-  const handleMouseDown = (e) => {
-    if (tool === 'select') {
-      // Sprawdzenie, czy kliknięto na adnotację
-      const clickedAnnotation = findAnnotationAtPoint(e.evt.layerX, e.evt.layerY);
-      setSelectedAnnotation(clickedAnnotation);
-      return;
-    }
+
+  // Handle wheel zoom
+  const handleWheel = (e) => {
+    e.evt.preventDefault();
     
-    if (tool === 'pan') {
-      setIsDragging(true);
-      return;
-    }
-    
+    const scaleBy = 1.1;
     const stage = stageRef.current;
-    const point = stage.getPointerPosition();
-    const scaledPoint = {
-      x: (point.x - position.x) / scale,
-      y: (point.y - position.y) / scale
+    const oldScale = scale;
+    
+    const mousePointTo = {
+      x: stage.getPointerPosition().x / oldScale - position.x / oldScale,
+      y: stage.getPointerPosition().y / oldScale - position.y / oldScale,
     };
     
-    if (tool === 'bbox') {
-      const newAnnotation = {
-        type: 'bbox',
-        x: scaledPoint.x,
-        y: scaledPoint.y,
+    const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    
+    setScale(newScale);
+    setPosition({
+      x: -(mousePointTo.x - stage.getPointerPosition().x / newScale) * newScale,
+      y: -(mousePointTo.y - stage.getPointerPosition().y / newScale) * newScale,
+    });
+  };
+
+  // Handle mouse down for drawing or selecting
+  const handleMouseDown = (e) => {
+    if (readOnly) return;
+    
+    // Prevent default behavior
+    e.evt.preventDefault();
+    
+    const stage = stageRef.current;
+    const pos = stage.getPointerPosition();
+    const x = (pos.x - position.x) / scale;
+    const y = (pos.y - position.y) / scale;
+    
+    if (mode === 'draw') {
+      setDrawingRect({
+        x,
+        y,
         width: 0,
         height: 0,
-        class: selectedClass
-      };
-      setCurrentAnnotation(newAnnotation);
-    } else if (tool === 'polygon') {
-      if (!currentAnnotation) {
-        const newAnnotation = {
-          type: 'polygon',
-          points: [scaledPoint.x, scaledPoint.y],
-          class: selectedClass
-        };
-        setCurrentAnnotation(newAnnotation);
-      } else {
-        // Dodanie nowego punktu do wielokąta
-        const points = [...currentAnnotation.points, scaledPoint.x, scaledPoint.y];
-        setCurrentAnnotation({
-          ...currentAnnotation,
-          points
+        class_id: selectedClassId
+      });
+    } else if (mode === 'pan') {
+      stage.container().style.cursor = 'grabbing';
+    }
+  };
+
+  // Handle mouse move for drawing or panning
+  const handleMouseMove = (e) => {
+    if (readOnly) return;
+    
+    const stage = stageRef.current;
+    const pos = stage.getPointerPosition();
+    
+    if (mode === 'draw' && drawingRect) {
+      const x = (pos.x - position.x) / scale;
+      const y = (pos.y - position.y) / scale;
+      
+      setDrawingRect({
+        ...drawingRect,
+        width: x - drawingRect.x,
+        height: y - drawingRect.y
+      });
+    } else if (mode === 'pan') {
+      if (e.evt.buttons === 1) { // Left mouse button is pressed
+        const dx = pos.x - stage.getPointerPosition().x;
+        const dy = pos.y - stage.getPointerPosition().y;
+        
+        setPosition({
+          x: position.x + dx,
+          y: position.y + dy
         });
       }
     }
   };
-  
-  // Obsługa ruchu myszą podczas rysowania
-  const handleMouseMove = (e) => {
-    if (!currentAnnotation || tool === 'select' || tool === 'polygon') {
-      return;
-    }
+
+  // Handle mouse up for finishing drawing
+  const handleMouseUp = (e) => {
+    if (readOnly) return;
     
-    if (tool === 'pan' && isDragging) {
+    if (mode === 'draw' && drawingRect) {
+      // Ensure width and height are positive
+      const x = Math.min(drawingRect.x, drawingRect.x + drawingRect.width);
+      const y = Math.min(drawingRect.y, drawingRect.y + drawingRect.height);
+      const width = Math.abs(drawingRect.width);
+      const height = Math.abs(drawingRect.height);
+      
+      // Only add if the rectangle has some size
+      if (width > 5 && height > 5) {
+        const newAnnotation = {
+          id: Date.now(), // Temporary ID
+          x,
+          y,
+          width,
+          height,
+          class_id: drawingRect.class_id
+        };
+        
+        const newAnnotations = [...currentAnnotations, newAnnotation];
+        setCurrentAnnotations(newAnnotations);
+        saveToHistory(newAnnotations);
+      }
+      
+      setDrawingRect(null);
+    } else if (mode === 'pan') {
       const stage = stageRef.current;
-      const pointerPosition = stage.getPointerPosition();
-      const newPosition = {
-        x: position.x + (pointerPosition.x - stage.lastPointerPosition.x),
-        y: position.y + (pointerPosition.y - stage.lastPointerPosition.y)
-      };
-      stage.lastPointerPosition = pointerPosition;
-      setPosition(newPosition);
-      return;
-    }
-    
-    const stage = stageRef.current;
-    const point = stage.getPointerPosition();
-    const scaledPoint = {
-      x: (point.x - position.x) / scale,
-      y: (point.y - position.y) / scale
-    };
-    
-    if (tool === 'bbox') {
-      const newWidth = scaledPoint.x - currentAnnotation.x;
-      const newHeight = scaledPoint.y - currentAnnotation.y;
-      
-      setCurrentAnnotation({
-        ...currentAnnotation,
-        width: newWidth,
-        height: newHeight
-      });
+      stage.container().style.cursor = 'grab';
     }
   };
-  
-  // Obsługa zakończenia rysowania
-  const handleMouseUp = () => {
-    if (tool === 'pan') {
-      setIsDragging(false);
-      return;
-    }
+
+  // Handle annotation selection
+  const handleAnnotationClick = (annotation) => {
+    if (readOnly || mode !== 'edit') return;
     
-    if (tool === 'bbox' && currentAnnotation) {
-      // Normalizacja współrzędnych (obsługa ujemnych wymiarów)
-      const normalizedAnnotation = normalizeRectCoordinates(currentAnnotation);
-      
-      // Dodanie nowej adnotacji
-      const newAnnotations = [...annotations, normalizedAnnotation];
-      onAnnotationChange(newAnnotations);
-      saveToHistory(newAnnotations);
-      setCurrentAnnotation(null);
-    }
+    setSelectedAnnotation(annotation);
   };
-  
-  // Obsługa podwójnego kliknięcia (zakończenie wielokąta)
-  const handleDoubleClick = () => {
-    if (tool === 'polygon' && currentAnnotation && currentAnnotation.points.length >= 6) {
-      // Zamknięcie wielokąta i dodanie adnotacji
-      const newAnnotations = [...annotations, currentAnnotation];
-      onAnnotationChange(newAnnotations);
-      saveToHistory(newAnnotations);
-      setCurrentAnnotation(null);
-    }
-  };
-  
-  // Normalizacja współrzędnych prostokąta
-  const normalizeRectCoordinates = (rect) => {
-    const { x, y, width, height, class: classId } = rect;
+
+  // Handle annotation drag
+  const handleAnnotationDrag = (e, annotation) => {
+    if (readOnly) return;
     
-    const normalizedRect = {
-      type: 'bbox',
-      class: classId,
-      x: width < 0 ? x + width : x,
-      y: height < 0 ? y + height : y,
-      width: Math.abs(width),
-      height: Math.abs(height)
-    };
+    const { x, y } = e.target.position();
     
-    return normalizedRect;
-  };
-  
-  // Znalezienie adnotacji w punkcie
-  const findAnnotationAtPoint = (x, y) => {
-    const scaledX = (x - position.x) / scale;
-    const scaledY = (y - position.y) / scale;
-    
-    // Sprawdzenie dla bounding boxów
-    for (let i = annotations.length - 1; i >= 0; i--) {
-      const annotation = annotations[i];
-      
-      if (annotation.type === 'bbox') {
-        if (
-          scaledX >= annotation.x &&
-          scaledX <= annotation.x + annotation.width &&
-          scaledY >= annotation.y &&
-          scaledY <= annotation.y + annotation.height
-        ) {
-          return i;
-        }
-      } else if (annotation.type === 'polygon') {
-        // Sprawdzenie dla wielokątów (uproszczone)
-        if (isPointInPolygon(scaledX, scaledY, annotation.points)) {
-          return i;
-        }
+    const updatedAnnotations = currentAnnotations.map(a => {
+      if (a.id === annotation.id) {
+        return { ...a, x, y };
       }
-    }
+      return a;
+    });
     
-    return null;
+    setCurrentAnnotations(updatedAnnotations);
   };
-  
-  // Sprawdzenie, czy punkt jest wewnątrz wielokąta
-  const isPointInPolygon = (x, y, points) => {
-    let inside = false;
-    for (let i = 0, j = points.length - 2; i < points.length; i += 2) {
-      const xi = points[i];
-      const yi = points[i + 1];
-      const xj = points[j];
-      const yj = points[j + 1];
-      
-      const intersect = ((yi > y) !== (yj > y)) &&
-        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-      
-      j = i;
-    }
+
+  // Handle annotation drag end
+  const handleAnnotationDragEnd = (annotation) => {
+    if (readOnly) return;
     
-    return inside;
+    saveToHistory(currentAnnotations);
   };
-  
-  // Usunięcie zaznaczonej adnotacji
+
+  // Handle annotation transform
+  const handleAnnotationTransform = (e, annotation) => {
+    if (readOnly) return;
+    
+    const node = e.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    
+    // Reset scale to avoid accumulation
+    node.scaleX(1);
+    node.scaleY(1);
+    
+    const updatedAnnotations = currentAnnotations.map(a => {
+      if (a.id === annotation.id) {
+        return {
+          ...a,
+          x: node.x(),
+          y: node.y(),
+          width: node.width() * scaleX,
+          height: node.height() * scaleY
+        };
+      }
+      return a;
+    });
+    
+    setCurrentAnnotations(updatedAnnotations);
+  };
+
+  // Handle annotation transform end
+  const handleAnnotationTransformEnd = (annotation) => {
+    if (readOnly) return;
+    
+    saveToHistory(currentAnnotations);
+  };
+
+  // Handle annotation deletion
   const handleDeleteAnnotation = () => {
-    if (selectedAnnotation !== null) {
-      const newAnnotations = [...annotations];
-      newAnnotations.splice(selectedAnnotation, 1);
-      onAnnotationChange(newAnnotations);
-      saveToHistory(newAnnotations);
-      setSelectedAnnotation(null);
+    if (readOnly || !selectedAnnotation) return;
+    
+    const updatedAnnotations = currentAnnotations.filter(a => a.id !== selectedAnnotation.id);
+    setCurrentAnnotations(updatedAnnotations);
+    saveToHistory(updatedAnnotations);
+    setSelectedAnnotation(null);
+  };
+
+  // Handle save
+  const handleSave = () => {
+    if (onSave) {
+      onSave(currentAnnotations);
     }
   };
-  
-  // Renderowanie kolorów klas
+
+  // Get class color
   const getClassColor = (classId) => {
-    const colors = [
-      '#FF0000', // czerwony
-      '#00FF00', // zielony
-      '#0000FF', // niebieski
-      '#FFFF00', // żółty
-      '#FF00FF', // magenta
-      '#00FFFF', // cyjan
-      '#FFA500', // pomarańczowy
-      '#800080', // fioletowy
-      '#008000', // ciemnozielony
-      '#000080', // granatowy
-    ];
-    
-    return colors[classId % colors.length];
+    const classObj = classes.find(c => c.id === classId);
+    return classObj ? classObj.color || '#FF0000' : '#FF0000';
   };
-  
-  // Renderowanie etykiety klasy
-  const renderClassLabel = (annotation, index) => {
-    if (!showLabels) return null;
-    
-    const className = classes[annotation.class]?.name || `Klasa ${annotation.class}`;
-    const color = getClassColor(annotation.class);
-    
-    if (annotation.type === 'bbox') {
-      return (
-        <Text
-          key={`label-${index}`}
-          x={annotation.x}
-          y={annotation.y - 20}
-          text={className}
-          fontSize={14}
-          fill={color}
-          stroke="black"
-          strokeWidth={0.5}
-        />
-      );
-    } else if (annotation.type === 'polygon') {
-      // Znalezienie środka wielokąta
-      let sumX = 0;
-      let sumY = 0;
-      for (let i = 0; i < annotation.points.length; i += 2) {
-        sumX += annotation.points[i];
-        sumY += annotation.points[i + 1];
-      }
-      const centerX = sumX / (annotation.points.length / 2);
-      const centerY = sumY / (annotation.points.length / 2);
+
+  // Get class name
+  const getClassName = (classId) => {
+    const classObj = classes.find(c => c.id === classId);
+    return classObj ? classObj.name : 'Unknown';
+  };
+
+  // Render annotations
+  const renderAnnotations = () => {
+    return currentAnnotations.map((annotation, index) => {
+      const isSelected = selectedAnnotation && selectedAnnotation.id === annotation.id;
+      const color = getClassColor(annotation.class_id);
       
       return (
-        <Text
-          key={`label-${index}`}
-          x={centerX}
-          y={centerY}
-          text={className}
-          fontSize={14}
-          fill={color}
-          stroke="black"
-          strokeWidth={0.5}
-        />
+        <React.Fragment key={annotation.id || index}>
+          <Rect
+            x={annotation.x}
+            y={annotation.y}
+            width={annotation.width}
+            height={annotation.height}
+            stroke={color}
+            strokeWidth={2 / scale}
+            dash={isSelected ? [5, 5] : []}
+            fill={isSelected ? `${color}33` : 'transparent'}
+            onClick={() => handleAnnotationClick(annotation)}
+            onTap={() => handleAnnotationClick(annotation)}
+            draggable={mode === 'edit'}
+            onDragMove={(e) => handleAnnotationDrag(e, annotation)}
+            onDragEnd={() => handleAnnotationDragEnd(annotation)}
+            onTransform={(e) => handleAnnotationTransform(e, annotation)}
+            onTransformEnd={() => handleAnnotationTransformEnd(annotation)}
+          />
+          <Text
+            x={annotation.x}
+            y={annotation.y - 20 / scale}
+            text={getClassName(annotation.class_id)}
+            fontSize={16 / scale}
+            fill={color}
+            padding={2}
+            background="#00000088"
+          />
+        </React.Fragment>
       );
-    }
+    });
+  };
+
+  // Render drawing rectangle
+  const renderDrawingRect = () => {
+    if (!drawingRect) return null;
     
-    return null;
+    const color = getClassColor(drawingRect.class_id);
+    
+    return (
+      <Rect
+        x={drawingRect.x}
+        y={drawingRect.y}
+        width={drawingRect.width}
+        height={drawingRect.height}
+        stroke={color}
+        strokeWidth={2 / scale}
+        dash={[5, 5]}
+        fill={`${color}33`}
+      />
+    );
   };
 
   return (
-    <Box sx={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-      {/* Pasek narzędzi */}
-      <Paper 
-        elevation={3} 
-        sx={{ 
-          position: 'absolute', 
-          top: 10, 
-          left: 10, 
-          zIndex: 10, 
-          p: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: 1 
-        }}
-      >
-        <ButtonGroup orientation="vertical">
-          <Tooltip title="Wybierz/Przesuń">
-            <IconButton 
-              color={tool === 'select' ? 'primary' : 'default'} 
-              onClick={() => handleToolChange('select')}
-            >
-              <PanTool />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Rysuj prostokąt">
-            <IconButton 
-              color={tool === 'bbox' ? 'primary' : 'default'} 
-              onClick={() => handleToolChange('bbox')}
-            >
-              <Square />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Rysuj wielokąt">
-            <IconButton 
-              color={tool === 'polygon' ? 'primary' : 'default'} 
-              onClick={() => handleToolChange('polygon')}
-            >
-              <Polyline />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Przesuń widok">
-            <IconButton 
-              color={tool === 'pan' ? 'primary' : 'default'} 
-              onClick={() => handleToolChange('pan')}
-            >
-              <PanTool />
-            </IconButton>
-          </Tooltip>
-        </ButtonGroup>
+    <div className="image-canvas-container" ref={containerRef}>
+      <div className="image-canvas-toolbar">
+        <IconButton 
+          onClick={() => setMode('view')} 
+          color={mode === 'view' ? 'primary' : 'default'}
+          title="View mode"
+        >
+          <ZoomIn />
+        </IconButton>
+        <IconButton 
+          onClick={() => setMode('draw')} 
+          color={mode === 'draw' ? 'primary' : 'default'}
+          disabled={readOnly}
+          title="Draw mode"
+        >
+          <Edit />
+        </IconButton>
+        <IconButton 
+          onClick={() => setMode('edit')} 
+          color={mode === 'edit' ? 'primary' : 'default'}
+          disabled={readOnly}
+          title="Edit mode"
+        >
+          <PanTool />
+        </IconButton>
+        <IconButton 
+          onClick={() => setMode('pan')} 
+          color={mode === 'pan' ? 'primary' : 'default'}
+          title="Pan mode"
+        >
+          <PanTool />
+        </IconButton>
+        <IconButton onClick={handleZoomIn} title="Zoom in">
+          <ZoomIn />
+        </IconButton>
+        <IconButton onClick={handleZoomOut} title="Zoom out">
+          <ZoomOut />
+        </IconButton>
+        <IconButton 
+          onClick={handleUndo} 
+          disabled={historyIndex <= 0 || readOnly}
+          title="Undo"
+        >
+          <Undo />
+        </IconButton>
+        <IconButton 
+          onClick={handleRedo} 
+          disabled={historyIndex >= history.length - 1 || readOnly}
+          title="Redo"
+        >
+          <Redo />
+        </IconButton>
+        <IconButton 
+          onClick={handleDeleteAnnotation} 
+          disabled={!selectedAnnotation || readOnly}
+          title="Delete selected annotation"
+        >
+          <Delete />
+        </IconButton>
+        <IconButton 
+          onClick={handleSave} 
+          disabled={readOnly}
+          title="Save annotations"
+        >
+          <Save />
+        </IconButton>
         
-        <Divider />
-        
-        <ButtonGroup orientation="vertical">
-          <Tooltip title="Przybliż">
-            <IconButton onClick={() => handleZoom('in')}>
-              <ZoomIn />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Oddal">
-            <IconButton onClick={() => handleZoom('out')}>
-              <ZoomOut />
-            </IconButton>
-          </Tooltip>
-        </ButtonGroup>
-        
-        <Divider />
-        
-        <ButtonGroup orientation="vertical">
-          <Tooltip title="Usuń zaznaczoną adnotację">
-            <IconButton 
-              onClick={handleDeleteAnnotation}
-              disabled={selectedAnnotation === null}
+        {!readOnly && (
+          <FormControl variant="outlined" size="small" style={{ minWidth: 120, marginLeft: 10 }}>
+            <InputLabel>Class</InputLabel>
+            <Select
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              label="Class"
             >
-              <Delete />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Cofnij">
-            <IconButton 
-              onClick={handleUndo}
-              disabled={historyIndex <= 0}
-            >
-              <Undo />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Ponów">
-            <IconButton 
-              onClick={handleRedo}
-              disabled={historyIndex >= history.length - 1}
-            >
-              <Redo />
-            </IconButton>
-          </Tooltip>
-        </ButtonGroup>
-        
-        <Divider />
-        
-        <ButtonGroup orientation="vertical">
-          <Tooltip title={showLabels ? "Ukryj etykiety" : "Pokaż etykiety"}>
-            <IconButton onClick={() => setShowLabels(!showLabels)}>
-              {showLabels ? <Visibility /> : <VisibilityOff />}
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Zapisz adnotacje">
-            <IconButton>
-              <Save />
-            </IconButton>
-          </Tooltip>
-        </ButtonGroup>
-      </Paper>
-      
-      {/* Informacje o klasach */}
-      <Paper 
-        elevation={3} 
-        sx={{ 
-          position: 'absolute', 
-          top: 10, 
-          right: 10, 
-          zIndex: 10, 
-          p: 1, 
-          maxWidth: 250 
-        }}
-      >
-        <Typography variant="subtitle2" gutterBottom>
-          Klasy obiektów
-        </Typography>
-        
-        <Grid container spacing={1}>
-          {classes.map((cls, index) => (
-            <Grid item xs={6} key={index}>
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  p: 0.5, 
-                  borderRadius: 1,
-                  bgcolor: selectedClass === index ? 'rgba(0, 0, 0, 0.1)' : 'transparent',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    bgcolor: 'rgba(0, 0, 0, 0.05)'
-                  }
-                }}
-                onClick={() => setSelectedClass(index)}
-              >
-                <Box 
-                  sx={{ 
-                    width: 16, 
-                    height: 16, 
-                    bgcolor: getClassColor(index),
-                    borderRadius: '50%',
-                    mr: 1
-                  }} 
-                />
-                <Typography variant="body2" noWrap>
-                  {cls.name}
-                </Typography>
-              </Box>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-      
-      {/* Obszar rysowania */}
-      <Stage
-        ref={stageRef}
-        width={window.innerWidth}
-        height={window.innerHeight}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onDblClick={handleDoubleClick}
-        style={{ background: '#f0f0f0' }}
-        scaleX={scale}
-        scaleY={scale}
-        x={position.x}
-        y={position.y}
-      >
-        <Layer>
-          {/* Obraz */}
-          {image && (
-            <KonvaImage
-              ref={imageRef}
-              image={image}
-              x={0}
-              y={0}
-              width={image.width}
-              height={image.height}
-            />
-          )}
-          
-          {/* Istniejące adnotacje */}
-          {annotations.map((annotation, i) => {
-            const isSelected = selectedAnnotation === i;
-            const color = getClassColor(annotation.class);
-            
-            if (annotation.type === 'bbox') {
-              return (
-                <React.Fragment key={i}>
-                  <Rect
-                    x={annotation.x}
-                    y={annotation.y}
-                    width={annotation.width}
-                    height={annotation.height}
-                    stroke={color}
-                    strokeWidth={isSelected ? 3 : 2}
-                    dash={isSelected ? undefined : [5, 5]}
-                    fill={isSelected ? `${color}33` : undefined}
-                  />
-                  {renderClassLabel(annotation, i)}
-                </React.Fragment>
-              );
-            } else if (annotation.type === 'polygon') {
-              return (
-                <React.Fragment key={i}>
-                  <Line
-                    points={annotation.points}
-                    stroke={color}
-                    strokeWidth={isSelected ? 3 : 2}
-                    dash={isSelected ? undefined : [5, 5]}
-                    fill={isSelected ? `${color}33` : undefined}
-                    closed
-                  />
-                  {/* Punkty wielokąta */}
-                  {isSelected && annotation.points.map((_, j) => {
-                    if (j % 2 === 0) {
-                      return (
-                        <Circle
-                          key={`point-${j}`}
-                          x={annotation.points[j]}
-                          y={annotation.points[j + 1]}
-                          radius={5}
-                          fill={color}
-                          stroke="white"
-                          strokeWidth={1}
-                        />
-                      );
-                    }
-                    return null;
-                  })}
-                  {renderClassLabel(annotation, i)}
-                </React.Fragment>
-              );
-            }
-            return null;
-          })}
-          
-          {/* Rysowanie bieżącej adnotacji */}
-          {currentAnnotation && currentAnnotation.type === 'bbox' && (
-            <Rect
-              x={currentAnnotation.x}
-              y={currentAnnotation.y}
-              width={currentAnnotation.width}
-              height={currentAnnotation.height}
-              stroke={getClassColor(currentAnnotation.class)}
-              strokeWidth={2}
-              dash={[5, 5]}
-            />
-          )}
-          
-          {currentAnnotation && currentAnnotation.type === 'polygon' && (
-            <React.Fragment>
-              <Line
-                points={currentAnnotation.points}
-                stroke={getClassColor(currentAnnotation.class)}
-                strokeWidth={2}
-                dash={[5, 5]}
-              />
-              {/* Punkty wielokąta */}
-              {currentAnnotation.points.map((_, i) => {
-                if (i % 2 === 0) {
-                  return (
-                    <Circle
-                      key={`current-point-${i}`}
-                      x={currentAnnotation.points[i]}
-                      y={currentAnnotation.points[i + 1]}
-                      radius={5}
-                      fill={getClassColor(currentAnnotation.class)}
-                      stroke="white"
-                      strokeWidth={1}
+              {classes.map(classObj => (
+                <MenuItem key={classObj.id} value={classObj.id}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div 
+                      style={{ 
+                        width: 16, 
+                        height: 16, 
+                        backgroundColor: classObj.color || '#FF0000',
+                        marginRight: 8
+                      }} 
                     />
-                  );
-                }
-                return null;
-              })}
-            </React.Fragment>
-          )}
-        </Layer>
-      </Stage>
+                    {classObj.name}
+                  </div>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+      </div>
       
-      {/* Informacje o skali */}
-      <Box 
-        sx={{ 
-          position: 'absolute', 
-          bottom: 10, 
-          right: 10, 
-          zIndex: 10, 
-          bgcolor: 'rgba(255, 255, 255, 0.7)', 
-          p: 0.5, 
-          borderRadius: 1 
-        }}
-      >
+      <div className="image-canvas-stage-container">
+        {image ? (
+          <Stage
+            ref={stageRef}
+            width={containerRef.current ? containerRef.current.clientWidth : 800}
+            height={containerRef.current ? containerRef.current.clientHeight - 60 : 600}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onTouchStart={handleMouseDown}
+            onTouchMove={handleMouseMove}
+            onTouchEnd={handleMouseUp}
+            draggable={mode === 'pan'}
+            onDragMove={(e) => {
+              setPosition({
+                x: e.target.x(),
+                y: e.target.y()
+              });
+            }}
+          >
+            <Layer>
+              <KonvaImage
+                image={image}
+                x={position.x}
+                y={position.y}
+                width={image.width * scale}
+                height={image.height * scale}
+                scaleX={scale}
+                scaleY={scale}
+              />
+            </Layer>
+            <Layer>
+              {renderAnnotations()}
+              {renderDrawingRect()}
+            </Layer>
+          </Stage>
+        ) : (
+          <div className="image-canvas-placeholder">
+            <Typography variant="h6">No image loaded</Typography>
+          </div>
+        )}
+      </div>
+      
+      <div className="image-canvas-status-bar">
         <Typography variant="body2">
-          Skala: {Math.round(scale * 100)}%
+          {image ? `${image.width} x ${image.height}px` : 'No image'} | 
+          Zoom: {Math.round(scale * 100)}% | 
+          Annotations: {currentAnnotations.length}
         </Typography>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
-
-// Komponent Divider
-function Divider() {
-  return (
-    <Box sx={{ width: '100%', height: 1, bgcolor: 'rgba(0, 0, 0, 0.12)', my: 0.5 }} />
-  );
-}
 
 export default ImageCanvas;

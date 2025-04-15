@@ -1,866 +1,1089 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Paper, Button, TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Alert, Card, CardContent, Divider, List, ListItem, ListItemText } from '@mui/material';
+import { 
+  Container, 
+  Typography, 
+  Grid, 
+  Card, 
+  CardContent, 
+  Button, 
+  TextField, 
+  Box,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  Chip,
+  CircularProgress
+} from '@mui/material';
 import { 
   PlayArrow, 
   Stop, 
+  Delete, 
+  Edit, 
+  Add, 
   Refresh, 
   Save,
   CloudUpload,
-  Settings,
-  BarChart,
-  CheckCircle,
-  Error
+  Settings
 } from '@mui/icons-material';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
 
 const TrainingPage = () => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [trainings, setTrainings] = useState([]);
   const [models, setModels] = useState([]);
   const [datasets, setDatasets] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
-  const [selectedDataset, setSelectedDataset] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeTrainings, setActiveTrainings] = useState([]);
-  const [completedTrainings, setCompletedTrainings] = useState([]);
-  const [trainingParams, setTrainingParams] = useState({
+  const [loading, setLoading] = useState(false);
+  const [newTrainingOpen, setNewTrainingOpen] = useState(false);
+  const [trainingProgress, setTrainingProgress] = useState({});
+  const [trainingLogs, setTrainingLogs] = useState({});
+  const [selectedTraining, setSelectedTraining] = useState(null);
+  const [viewLogsOpen, setViewLogsOpen] = useState(false);
+  const [newTrainingData, setNewTrainingData] = useState({
+    name: '',
+    model_type: 'yolov5s',
+    dataset_id: '',
     epochs: 100,
-    batchSize: 16,
-    learningRate: 0.001,
-    imageSize: 640,
+    batch_size: 16,
+    learning_rate: 0.001,
     augmentation: true,
-    validationSplit: 0.2,
-    earlyStop: true,
+    early_stopping: true,
     patience: 10,
-    optimizer: 'adam',
-    weightDecay: 0.0005,
-    momentum: 0.937,
-    classWeights: false
+    validation_split: 0.2
   });
-  
-  // Przykładowe dane
+
+  // Mock training data for charts
+  const trainingChartData = [
+    { epoch: 1, loss: 1.8, val_loss: 1.9, mAP: 0.35 },
+    { epoch: 2, loss: 1.4, val_loss: 1.5, mAP: 0.42 },
+    { epoch: 3, loss: 1.1, val_loss: 1.2, mAP: 0.48 },
+    { epoch: 4, loss: 0.9, val_loss: 1.0, mAP: 0.53 },
+    { epoch: 5, loss: 0.7, val_loss: 0.85, mAP: 0.58 },
+    { epoch: 6, loss: 0.6, val_loss: 0.75, mAP: 0.62 },
+    { epoch: 7, loss: 0.5, val_loss: 0.65, mAP: 0.65 },
+    { epoch: 8, loss: 0.45, val_loss: 0.6, mAP: 0.68 },
+    { epoch: 9, loss: 0.4, val_loss: 0.55, mAP: 0.71 },
+    { epoch: 10, loss: 0.35, val_loss: 0.5, mAP: 0.73 },
+  ];
+
+  // Fetch trainings, models, and datasets on component mount
   useEffect(() => {
-    // Symulacja ładowania danych
-    setIsLoading(true);
+    fetchTrainings();
+    fetchModels();
+    fetchDatasets();
     
-    setTimeout(() => {
-      const mockDatasets = [
-        { id: 'dataset1', name: 'Zbiór testowy', count: 120, classes: 5 },
-        { id: 'dataset2', name: 'Zbiór treningowy', count: 500, classes: 8 },
-        { id: 'dataset3', name: 'Zbiór walidacyjny', count: 100, classes: 5 },
-        { id: 'dataset4', name: 'Zdjęcia z kamery', count: 45, classes: 3 },
+    // Set up interval to update training progress
+    const interval = setInterval(() => {
+      updateTrainingProgress();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch trainings from API
+  const fetchTrainings = async () => {
+    setLoading(true);
+    try {
+      // Mock data for now
+      const mockTrainings = [
+        { id: 1, name: 'Traffic Model v1', model_type: 'yolov5s', dataset: 'Traffic Scenes', status: 'completed', progress: 100, created_at: '2023-01-15', epochs: 100, current_epoch: 100, mAP: 0.73, best_epoch: 87 },
+        { id: 2, name: 'Pedestrian Detector', model_type: 'yolov5m', dataset: 'Pedestrians', status: 'completed', progress: 100, created_at: '2023-01-20', epochs: 150, current_epoch: 150, mAP: 0.82, best_epoch: 132 },
+        { id: 3, name: 'Night Vision Model', model_type: 'yolov8n', dataset: 'Night Scenes', status: 'running', progress: 45, created_at: '2023-01-25', epochs: 200, current_epoch: 90, mAP: 0.68, best_epoch: 78 },
+        { id: 4, name: 'Cyclist Detector', model_type: 'yolov5l', dataset: 'Cyclists', status: 'failed', progress: 23, created_at: '2023-01-30', epochs: 100, current_epoch: 23, mAP: 0.41, best_epoch: 20 },
       ];
       
+      setTrainings(mockTrainings);
+      
+      // Initialize progress and logs
+      const progress = {};
+      const logs = {};
+      mockTrainings.forEach(training => {
+        progress[training.id] = training.progress;
+        logs[training.id] = generateMockLogs(training);
+      });
+      setTrainingProgress(progress);
+      setTrainingLogs(logs);
+    } catch (error) {
+      console.error('Error fetching trainings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch models from API
+  const fetchModels = async () => {
+    try {
+      // Mock data for now
       const mockModels = [
-        { id: 'yolov8n', name: 'YOLOv8 Nano', type: 'YOLO', size: 'Mały', params: '3.2M' },
-        { id: 'yolov8s', name: 'YOLOv8 Small', type: 'YOLO', size: 'Średni', params: '11.2M' },
-        { id: 'yolov8m', name: 'YOLOv8 Medium', type: 'YOLO', size: 'Duży', params: '25.9M' },
-        { id: 'yolov8l', name: 'YOLOv8 Large', type: 'YOLO', size: 'Bardzo duży', params: '43.7M' },
-        { id: 'fasterrcnn', name: 'Faster R-CNN', type: 'R-CNN', size: 'Duży', params: '41.8M' },
-        { id: 'ssd', name: 'SSD MobileNet', type: 'SSD', size: 'Mały', params: '4.3M' },
+        { id: 1, name: 'YOLOv5s', type: 'yolov5s', size: 'small', parameters: '7.2M', speed: 'fast' },
+        { id: 2, name: 'YOLOv5m', type: 'yolov5m', size: 'medium', parameters: '21.2M', speed: 'medium' },
+        { id: 3, name: 'YOLOv5l', type: 'yolov5l', size: 'large', parameters: '46.5M', speed: 'slow' },
+        { id: 4, name: 'YOLOv8n', type: 'yolov8n', size: 'nano', parameters: '3.2M', speed: 'very fast' },
+        { id: 5, name: 'YOLOv8s', type: 'yolov8s', size: 'small', parameters: '11.2M', speed: 'fast' },
       ];
       
-      const mockActiveTrainings = [
-        {
-          id: 'train1',
-          modelId: 'yolov8s',
-          modelName: 'YOLOv8 Small',
-          datasetId: 'dataset2',
-          datasetName: 'Zbiór treningowy',
-          startTime: new Date(2025, 3, 14, 18, 30).toISOString(),
-          progress: 45,
-          eta: '1h 23m',
-          epochs: 100,
-          currentEpoch: 45,
-          metrics: {
-            loss: 0.235,
-            mAP50: 0.78,
-            mAP50_95: 0.56,
-            precision: 0.82,
-            recall: 0.75
-          },
-          status: 'running'
-        }
-      ];
-      
-      const mockCompletedTrainings = [
-        {
-          id: 'train2',
-          modelId: 'yolov8n',
-          modelName: 'YOLOv8 Nano',
-          datasetId: 'dataset1',
-          datasetName: 'Zbiór testowy',
-          startTime: new Date(2025, 3, 13, 10, 15).toISOString(),
-          endTime: new Date(2025, 3, 13, 12, 45).toISOString(),
-          epochs: 100,
-          metrics: {
-            loss: 0.187,
-            mAP50: 0.83,
-            mAP50_95: 0.62,
-            precision: 0.85,
-            recall: 0.79
-          },
-          status: 'completed'
-        },
-        {
-          id: 'train3',
-          modelId: 'ssd',
-          modelName: 'SSD MobileNet',
-          datasetId: 'dataset3',
-          datasetName: 'Zbiór walidacyjny',
-          startTime: new Date(2025, 3, 12, 14, 20).toISOString(),
-          endTime: new Date(2025, 3, 12, 15, 30).toISOString(),
-          epochs: 50,
-          metrics: {
-            loss: 0.245,
-            mAP50: 0.76,
-            mAP50_95: 0.51,
-            precision: 0.79,
-            recall: 0.72
-          },
-          status: 'completed'
-        },
-        {
-          id: 'train4',
-          modelId: 'fasterrcnn',
-          modelName: 'Faster R-CNN',
-          datasetId: 'dataset2',
-          datasetName: 'Zbiór treningowy',
-          startTime: new Date(2025, 3, 10, 9, 0).toISOString(),
-          endTime: new Date(2025, 3, 10, 16, 30).toISOString(),
-          epochs: 80,
-          metrics: {
-            loss: 0.156,
-            mAP50: 0.89,
-            mAP50_95: 0.71,
-            precision: 0.91,
-            recall: 0.85
-          },
-          status: 'completed'
-        }
+      setModels(mockModels);
+    } catch (error) {
+      console.error('Error fetching models:', error);
+    }
+  };
+
+  // Fetch datasets from API
+  const fetchDatasets = async () => {
+    try {
+      // Mock data for now
+      const mockDatasets = [
+        { id: 1, name: 'Traffic Scenes', image_count: 1200, class_count: 6 },
+        { id: 2, name: 'Pedestrians', image_count: 800, class_count: 2 },
+        { id: 3, name: 'Cyclists', image_count: 500, class_count: 3 },
+        { id: 4, name: 'Night Scenes', image_count: 600, class_count: 5 },
       ];
       
       setDatasets(mockDatasets);
-      setModels(mockModels);
-      setActiveTrainings(mockActiveTrainings);
-      setCompletedTrainings(mockCompletedTrainings);
-      setIsLoading(false);
-    }, 1000);
-  }, []);
-  
-  // Obsługa wyboru modelu
-  const handleModelChange = (event) => {
-    setSelectedModel(event.target.value);
-  };
-  
-  // Obsługa wyboru zbioru danych
-  const handleDatasetChange = (event) => {
-    setSelectedDataset(event.target.value);
-  };
-  
-  // Obsługa zmiany parametrów treningu
-  const handleParamChange = (param, value) => {
-    setTrainingParams({
-      ...trainingParams,
-      [param]: value
-    });
-  };
-  
-  // Obsługa rozpoczęcia treningu
-  const handleStartTraining = () => {
-    if (!selectedModel || !selectedDataset) {
-      alert('Wybierz model i zbiór danych przed rozpoczęciem treningu.');
-      return;
+    } catch (error) {
+      console.error('Error fetching datasets:', error);
     }
+  };
+
+  // Update training progress
+  const updateTrainingProgress = () => {
+    // In a real app, this would fetch the latest progress from the API
+    // For now, we'll just simulate progress updates for running trainings
+    const updatedProgress = { ...trainingProgress };
+    const updatedLogs = { ...trainingLogs };
     
-    const model = models.find(m => m.id === selectedModel);
-    const dataset = datasets.find(d => d.id === selectedDataset);
-    
-    if (!model || !dataset) {
-      alert('Nieprawidłowy model lub zbiór danych.');
-      return;
-    }
-    
-    const newTraining = {
-      id: `train${activeTrainings.length + completedTrainings.length + 1}`,
-      modelId: model.id,
-      modelName: model.name,
-      datasetId: dataset.id,
-      datasetName: dataset.name,
-      startTime: new Date().toISOString(),
-      progress: 0,
-      eta: `${Math.floor(trainingParams.epochs / 10)}h ${Math.floor(Math.random() * 60)}m`,
-      epochs: trainingParams.epochs,
-      currentEpoch: 0,
-      metrics: {
-        loss: 0,
-        mAP50: 0,
-        mAP50_95: 0,
-        precision: 0,
-        recall: 0
-      },
-      status: 'initializing'
-    };
-    
-    setActiveTrainings([...activeTrainings, newTraining]);
-    
-    // Symulacja postępu treningu
-    setTimeout(() => {
-      setActiveTrainings(prev => prev.map(t => {
-        if (t.id === newTraining.id) {
-          return {
-            ...t,
-            status: 'running'
-          };
+    trainings.forEach(training => {
+      if (training.status === 'running') {
+        // Increment progress by a random amount (1-3%)
+        const increment = Math.floor(Math.random() * 3) + 1;
+        const newProgress = Math.min(updatedProgress[training.id] + increment, 100);
+        updatedProgress[training.id] = newProgress;
+        
+        // Add a new log entry
+        if (updatedLogs[training.id]) {
+          const currentEpoch = Math.floor((newProgress / 100) * training.epochs);
+          const newLog = `[${new Date().toISOString()}] Epoch ${currentEpoch}/${training.epochs}: loss=0.${Math.floor(Math.random() * 9) + 1}, mAP=0.${Math.floor(Math.random() * 9) + 1}`;
+          updatedLogs[training.id] = updatedLogs[training.id] + '\n' + newLog;
         }
-        return t;
-      }));
-      
-      const interval = setInterval(() => {
-        setActiveTrainings(prev => {
-          const updatedTrainings = prev.map(t => {
-            if (t.id === newTraining.id) {
-              const newProgress = t.progress + 1;
-              const newEpoch = Math.floor((newProgress / 100) * t.epochs);
-              
-              if (newProgress >= 100) {
-                clearInterval(interval);
-                
-                const completedTraining = {
-                  ...t,
-                  progress: 100,
-                  currentEpoch: t.epochs,
-                  endTime: new Date().toISOString(),
-                  status: 'completed',
-                  metrics: {
-                    loss: 0.2 - (Math.random() * 0.1),
-                    mAP50: 0.7 + (Math.random() * 0.2),
-                    mAP50_95: 0.5 + (Math.random() * 0.2),
-                    precision: 0.75 + (Math.random() * 0.15),
-                    recall: 0.7 + (Math.random() * 0.15)
-                  }
-                };
-                
-                setCompletedTrainings(prev => [completedTraining, ...prev]);
-                return prev.filter(training => training.id !== t.id);
-              }
-              
-              return {
-                ...t,
-                progress: newProgress,
-                currentEpoch: newEpoch,
-                eta: `${Math.floor((100 - newProgress) / 10)}h ${Math.floor(Math.random() * 60)}m`,
-                metrics: {
-                  loss: 0.5 - (newProgress / 200),
-                  mAP50: 0.4 + (newProgress / 200),
-                  mAP50_95: 0.2 + (newProgress / 250),
-                  precision: 0.5 + (newProgress / 250),
-                  recall: 0.4 + (newProgress / 200)
-                }
-              };
+        
+        // If progress reaches 100%, update status to completed
+        if (newProgress === 100) {
+          const updatedTrainings = trainings.map(t => {
+            if (t.id === training.id) {
+              return { ...t, status: 'completed', progress: 100, current_epoch: t.epochs };
             }
             return t;
           });
-          
-          return updatedTrainings;
-        });
-      }, 3000);
-    }, 2000);
-  };
-  
-  // Obsługa zatrzymania treningu
-  const handleStopTraining = (trainingId) => {
-    if (window.confirm('Czy na pewno chcesz zatrzymać ten trening? Postęp zostanie utracony.')) {
-      setActiveTrainings(activeTrainings.filter(t => t.id !== trainingId));
-    }
-  };
-  
-  // Obsługa eksportu modelu
-  const handleExportModel = (trainingId) => {
-    const training = completedTrainings.find(t => t.id === trainingId);
+          setTrainings(updatedTrainings);
+        }
+      }
+    });
     
-    if (training) {
-      alert(`Model ${training.modelName} został wyeksportowany.`);
-    }
+    setTrainingProgress(updatedProgress);
+    setTrainingLogs(updatedLogs);
   };
-  
-  // Formatowanie daty
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pl-PL', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
+
+  // Generate mock logs for a training
+  const generateMockLogs = (training) => {
+    let logs = `[${training.created_at}T00:00:00.000Z] Starting training job for ${training.name}\n`;
+    logs += `[${training.created_at}T00:00:01.000Z] Model: ${training.model_type}, Dataset: ${training.dataset}\n`;
+    logs += `[${training.created_at}T00:00:02.000Z] Epochs: ${training.epochs}, Batch size: 16\n`;
+    logs += `[${training.created_at}T00:00:03.000Z] Loading dataset...\n`;
+    logs += `[${training.created_at}T00:00:10.000Z] Dataset loaded. Training samples: 1200, Validation samples: 300\n`;
+    logs += `[${training.created_at}T00:00:15.000Z] Starting training...\n`;
+    
+    // Add epoch logs based on current progress
+    const completedEpochs = Math.floor((training.progress / 100) * training.epochs);
+    for (let i = 1; i <= completedEpochs; i++) {
+      const loss = 1.8 - (i / training.epochs) * 1.5;
+      const mAP = 0.3 + (i / training.epochs) * 0.5;
+      logs += `[${training.created_at}T${String(i).padStart(2, '0')}:00:00.000Z] Epoch ${i}/${training.epochs}: loss=${loss.toFixed(2)}, mAP=${mAP.toFixed(2)}\n`;
+    }
+    
+    // Add completion or failure message
+    if (training.status === 'completed') {
+      logs += `[${training.created_at}T${String(completedEpochs + 1).padStart(2, '0')}:00:00.000Z] Training completed. Best mAP: ${training.mAP} at epoch ${training.best_epoch}\n`;
+      logs += `[${training.created_at}T${String(completedEpochs + 1).padStart(2, '0')}:05:00.000Z] Model saved to storage.\n`;
+    } else if (training.status === 'failed') {
+      logs += `[${training.created_at}T${String(completedEpochs + 1).padStart(2, '0')}:00:00.000Z] ERROR: Training failed. Out of memory.\n`;
+    }
+    
+    return logs;
+  };
+
+  // Handle tab change
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  // Handle new training dialog open
+  const handleNewTrainingOpen = () => {
+    setNewTrainingOpen(true);
+  };
+
+  // Handle new training dialog close
+  const handleNewTrainingClose = () => {
+    setNewTrainingOpen(false);
+  };
+
+  // Handle new training input change
+  const handleNewTrainingChange = (field, value) => {
+    setNewTrainingData({
+      ...newTrainingData,
+      [field]: value
     });
   };
-  
-  // Obliczanie czasu trwania
-  const calculateDuration = (startTime, endTime) => {
-    const start = new Date(startTime);
-    const end = endTime ? new Date(endTime) : new Date();
-    const durationMs = end - start;
-    
-    const hours = Math.floor(durationMs / (1000 * 60 * 60));
-    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return `${hours}h ${minutes}m`;
+
+  // Handle create new training
+  const handleCreateTraining = async () => {
+    setLoading(true);
+    try {
+      // In a real app, this would send a request to the API
+      console.log('Creating new training:', newTrainingData);
+      
+      // Mock creating a new training
+      const dataset = datasets.find(d => d.id.toString() === newTrainingData.dataset_id.toString());
+      const newTraining = {
+        id: trainings.length + 1,
+        name: newTrainingData.name,
+        model_type: newTrainingData.model_type,
+        dataset: dataset ? dataset.name : 'Unknown',
+        status: 'running',
+        progress: 0,
+        created_at: new Date().toISOString().split('T')[0],
+        epochs: newTrainingData.epochs,
+        current_epoch: 0,
+        mAP: 0,
+        best_epoch: 0
+      };
+      
+      setTrainings([newTraining, ...trainings]);
+      
+      // Initialize progress and logs
+      setTrainingProgress({
+        ...trainingProgress,
+        [newTraining.id]: 0
+      });
+      setTrainingLogs({
+        ...trainingLogs,
+        [newTraining.id]: generateMockLogs(newTraining)
+      });
+      
+      setNewTrainingOpen(false);
+      setNewTrainingData({
+        name: '',
+        model_type: 'yolov5s',
+        dataset_id: '',
+        epochs: 100,
+        batch_size: 16,
+        learning_rate: 0.001,
+        augmentation: true,
+        early_stopping: true,
+        patience: 10,
+        validation_split: 0.2
+      });
+    } catch (error) {
+      console.error('Error creating training:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle view logs
+  const handleViewLogs = (training) => {
+    setSelectedTraining(training);
+    setViewLogsOpen(true);
+  };
+
+  // Handle stop training
+  const handleStopTraining = async (trainingId) => {
+    try {
+      // In a real app, this would send a request to the API
+      console.log('Stopping training:', trainingId);
+      
+      // Update training status
+      const updatedTrainings = trainings.map(training => {
+        if (training.id === trainingId) {
+          return { ...training, status: 'stopped' };
+        }
+        return training;
+      });
+      
+      setTrainings(updatedTrainings);
+    } catch (error) {
+      console.error('Error stopping training:', error);
+    }
+  };
+
+  // Handle delete training
+  const handleDeleteTraining = async (trainingId) => {
+    try {
+      // In a real app, this would send a request to the API
+      console.log('Deleting training:', trainingId);
+      
+      // Remove training from list
+      const updatedTrainings = trainings.filter(training => training.id !== trainingId);
+      setTrainings(updatedTrainings);
+      
+      // Remove from progress and logs
+      const updatedProgress = { ...trainingProgress };
+      const updatedLogs = { ...trainingLogs };
+      delete updatedProgress[trainingId];
+      delete updatedLogs[trainingId];
+      setTrainingProgress(updatedProgress);
+      setTrainingLogs(updatedLogs);
+    } catch (error) {
+      console.error('Error deleting training:', error);
+    }
+  };
+
+  // Get status color
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'running':
+        return '#2196f3'; // Blue
+      case 'completed':
+        return '#4caf50'; // Green
+      case 'failed':
+        return '#f44336'; // Red
+      case 'stopped':
+        return '#ff9800'; // Orange
+      default:
+        return '#9e9e9e'; // Grey
+    }
+  };
+
+  // Get model display name
+  const getModelDisplayName = (modelType) => {
+    const model = models.find(m => m.type === modelType);
+    return model ? model.name : modelType;
   };
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Trenowanie modeli
-      </Typography>
+    <Container maxWidth="xl">
+      <Box sx={{ my: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Model Training
+        </Typography>
+        
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="training tabs">
+            <Tab label="Training Jobs" />
+            <Tab label="Models" />
+            <Tab label="Settings" />
+          </Tabs>
+          
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleNewTrainingOpen}
+          >
+            New Training
+          </Button>
+        </Box>
+        
+        {activeTab === 0 && (
+          <>
+            {loading && trainings.length === 0 ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Model</TableCell>
+                      <TableCell>Dataset</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Progress</TableCell>
+                      <TableCell>Created</TableCell>
+                      <TableCell>mAP</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {trainings.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          <Typography variant="body1" sx={{ py: 2 }}>
+                            No training jobs found
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      trainings.map((training) => (
+                        <TableRow key={training.id}>
+                          <TableCell>{training.name}</TableCell>
+                          <TableCell>{getModelDisplayName(training.model_type)}</TableCell>
+                          <TableCell>{training.dataset}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={training.status} 
+                              sx={{ 
+                                backgroundColor: getStatusColor(training.status),
+                                color: 'white'
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: '100%', mr: 1 }}>
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={trainingProgress[training.id] || 0} 
+                                  sx={{ height: 10, borderRadius: 5 }}
+                                />
+                              </Box>
+                              <Box sx={{ minWidth: 35 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                  {`${Math.round(trainingProgress[training.id] || 0)}%`}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {`Epoch ${training.current_epoch}/${training.epochs}`}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{training.created_at}</TableCell>
+                          <TableCell>{training.mAP}</TableCell>
+                          <TableCell>
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleViewLogs(training)}
+                              title="View Logs"
+                            >
+                              <Edit />
+                            </IconButton>
+                            {training.status === 'running' && (
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleStopTraining(training.id)}
+                                title="Stop Training"
+                                color="warning"
+                              >
+                                <Stop />
+                              </IconButton>
+                            )}
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleDeleteTraining(training.id)}
+                              title="Delete Training"
+                              color="error"
+                            >
+                              <Delete />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </>
+        )}
+        
+        {activeTab === 1 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Available Models
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Name</TableCell>
+                          <TableCell>Size</TableCell>
+                          <TableCell>Parameters</TableCell>
+                          <TableCell>Speed</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {models.map((model) => (
+                          <TableRow key={model.id}>
+                            <TableCell>{model.name}</TableCell>
+                            <TableCell>{model.size}</TableCell>
+                            <TableCell>{model.parameters}</TableCell>
+                            <TableCell>{model.speed}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Model Comparison
+                  </Typography>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart
+                      data={[
+                        { name: 'YOLOv5n', mAP: 0.45, speed: 140 },
+                        { name: 'YOLOv5s', mAP: 0.56, speed: 100 },
+                        { name: 'YOLOv5m', mAP: 0.64, speed: 75 },
+                        { name: 'YOLOv5l', mAP: 0.70, speed: 45 },
+                        { name: 'YOLOv5x', mAP: 0.75, speed: 30 },
+                        { name: 'YOLOv8n', mAP: 0.52, speed: 160 },
+                        { name: 'YOLOv8s', mAP: 0.62, speed: 110 },
+                        { name: 'YOLOv8m', mAP: 0.69, speed: 80 },
+                        { name: 'YOLOv8l', mAP: 0.75, speed: 50 },
+                        { name: 'YOLOv8x', mAP: 0.80, speed: 35 },
+                      ]}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                      <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                      <Tooltip />
+                      <Legend />
+                      <Bar yAxisId="left" dataKey="mAP" fill="#8884d8" name="mAP (higher is better)" />
+                      <Bar yAxisId="right" dataKey="speed" fill="#82ca9d" name="Speed (FPS)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Custom Models
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<CloudUpload />}
+                      sx={{ mr: 2 }}
+                    >
+                      Upload Custom Model
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Settings />}
+                    >
+                      Configure Model Registry
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+        
+        {activeTab === 2 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Training Settings
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>Default Epochs</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={100}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 1000 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Default Batch Size</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={16}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 128 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Default Learning Rate</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={0.001}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 0.0001, max: 0.1, step: 0.0001 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Enable Data Augmentation</TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={<Switch defaultChecked />}
+                              label=""
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Enable Early Stopping</TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={<Switch defaultChecked />}
+                              label=""
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Early Stopping Patience</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={10}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 50 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Validation Split</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={0.2}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 0.1, max: 0.5, step: 0.05 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<Save />}
+                    >
+                      Save Settings
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Hardware Settings
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>Use GPU for Training</TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={<Switch defaultChecked />}
+                              label=""
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>GPU Memory Limit (GB)</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={8}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 32 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Number of Workers</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={4}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 16 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Mixed Precision Training</TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={<Switch defaultChecked />}
+                              label=""
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Cache Images in RAM</TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={<Switch defaultChecked />}
+                              label=""
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Maximum Concurrent Trainings</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              defaultValue={2}
+                              variant="outlined"
+                              size="small"
+                              InputProps={{ inputProps: { min: 1, max: 4 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<Save />}
+                    >
+                      Save Settings
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+      </Box>
       
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Konfiguracja treningu
-            </Typography>
+      {/* New Training Dialog */}
+      <Dialog open={newTrainingOpen} onClose={handleNewTrainingClose} maxWidth="md" fullWidth>
+        <DialogTitle>New Training Job</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Training Name"
+                value={newTrainingData.name}
+                onChange={(e) => handleNewTrainingChange('name', e.target.value)}
+                variant="outlined"
+                fullWidth
+                required
+              />
+            </Grid>
             
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Model</InputLabel>
-              <Select
-                value={selectedModel}
-                onChange={handleModelChange}
-                label="Model"
-              >
-                <MenuItem value="">
-                  <em>Wybierz model</em>
-                </MenuItem>
-                {models.map(model => (
-                  <MenuItem key={model.id} value={model.id}>
-                    {model.name} ({model.type}) - {model.size}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth variant="outlined">
+                <InputLabel>Model</InputLabel>
+                <Select
+                  value={newTrainingData.model_type}
+                  onChange={(e) => handleNewTrainingChange('model_type', e.target.value)}
+                  label="Model"
+                >
+                  {models.map((model) => (
+                    <MenuItem key={model.id} value={model.type}>
+                      {model.name} ({model.size})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Zbiór danych</InputLabel>
-              <Select
-                value={selectedDataset}
-                onChange={handleDatasetChange}
-                label="Zbiór danych"
-              >
-                <MenuItem value="">
-                  <em>Wybierz zbiór danych</em>
-                </MenuItem>
-                {datasets.map(dataset => (
-                  <MenuItem key={dataset.id} value={dataset.id}>
-                    {dataset.name} ({dataset.count} obrazów, {dataset.classes} klas)
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth variant="outlined">
+                <InputLabel>Dataset</InputLabel>
+                <Select
+                  value={newTrainingData.dataset_id}
+                  onChange={(e) => handleNewTrainingChange('dataset_id', e.target.value)}
+                  label="Dataset"
+                  required
+                >
+                  {datasets.map((dataset) => (
+                    <MenuItem key={dataset.id} value={dataset.id.toString()}>
+                      {dataset.name} ({dataset.image_count} images, {dataset.class_count} classes)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             
-            <Divider sx={{ my: 2 }} />
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Epochs"
+                type="number"
+                value={newTrainingData.epochs}
+                onChange={(e) => handleNewTrainingChange('epochs', parseInt(e.target.value))}
+                variant="outlined"
+                fullWidth
+                InputProps={{ inputProps: { min: 1, max: 1000 } }}
+              />
+            </Grid>
             
-            <Typography variant="subtitle1" gutterBottom>
-              Parametry treningu
-            </Typography>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Batch Size"
+                type="number"
+                value={newTrainingData.batch_size}
+                onChange={(e) => handleNewTrainingChange('batch_size', parseInt(e.target.value))}
+                variant="outlined"
+                fullWidth
+                InputProps={{ inputProps: { min: 1, max: 128 } }}
+              />
+            </Grid>
             
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Liczba epok"
-                  type="number"
-                  value={trainingParams.epochs}
-                  onChange={(e) => handleParamChange('epochs', parseInt(e.target.value))}
-                  inputProps={{ min: 1, max: 1000 }}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Rozmiar batcha"
-                  type="number"
-                  value={trainingParams.batchSize}
-                  onChange={(e) => handleParamChange('batchSize', parseInt(e.target.value))}
-                  inputProps={{ min: 1, max: 128 }}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Współczynnik uczenia"
-                  type="number"
-                  value={trainingParams.learningRate}
-                  onChange={(e) => handleParamChange('learningRate', parseFloat(e.target.value))}
-                  inputProps={{ step: 0.0001, min: 0.0001, max: 0.1 }}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Rozmiar obrazu"
-                  type="number"
-                  value={trainingParams.imageSize}
-                  onChange={(e) => handleParamChange('imageSize', parseInt(e.target.value))}
-                  inputProps={{ step: 32, min: 32, max: 1280 }}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={6}>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Optymalizator</InputLabel>
-                  <Select
-                    value={trainingParams.optimizer}
-                    onChange={(e) => handleParamChange('optimizer', e.target.value)}
-                    label="Optymalizator"
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Learning Rate"
+                type="number"
+                value={newTrainingData.learning_rate}
+                onChange={(e) => handleNewTrainingChange('learning_rate', parseFloat(e.target.value))}
+                variant="outlined"
+                fullWidth
+                InputProps={{ inputProps: { min: 0.0001, max: 0.1, step: 0.0001 } }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={newTrainingData.augmentation}
+                    onChange={(e) => handleNewTrainingChange('augmentation', e.target.checked)}
+                  />
+                }
+                label="Enable Data Augmentation"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={newTrainingData.early_stopping}
+                    onChange={(e) => handleNewTrainingChange('early_stopping', e.target.checked)}
+                  />
+                }
+                label="Enable Early Stopping"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Early Stopping Patience"
+                type="number"
+                value={newTrainingData.patience}
+                onChange={(e) => handleNewTrainingChange('patience', parseInt(e.target.value))}
+                variant="outlined"
+                fullWidth
+                disabled={!newTrainingData.early_stopping}
+                InputProps={{ inputProps: { min: 1, max: 50 } }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Validation Split"
+                type="number"
+                value={newTrainingData.validation_split}
+                onChange={(e) => handleNewTrainingChange('validation_split', parseFloat(e.target.value))}
+                variant="outlined"
+                fullWidth
+                InputProps={{ inputProps: { min: 0.1, max: 0.5, step: 0.05 } }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleNewTrainingClose}>Cancel</Button>
+          <Button 
+            onClick={handleCreateTraining} 
+            variant="contained" 
+            disabled={!newTrainingData.name || !newTrainingData.dataset_id}
+          >
+            Start Training
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* View Logs Dialog */}
+      <Dialog open={viewLogsOpen} onClose={() => setViewLogsOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          {selectedTraining ? `Training Logs: ${selectedTraining.name}` : 'Training Logs'}
+        </DialogTitle>
+        <DialogContent>
+          {selectedTraining && (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>
+                  Training Progress
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart
+                    data={trainingChartData}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                   >
-                    <MenuItem value="adam">Adam</MenuItem>
-                    <MenuItem value="sgd">SGD</MenuItem>
-                    <MenuItem value="adamw">AdamW</MenuItem>
-                  </Select>
-                </FormControl>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="epoch" />
+                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                    <Tooltip />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="loss" stroke="#8884d8" name="Training Loss" />
+                    <Line yAxisId="left" type="monotone" dataKey="val_loss" stroke="#ff7300" name="Validation Loss" />
+                    <Line yAxisId="right" type="monotone" dataKey="mAP" stroke="#82ca9d" name="mAP" />
+                  </LineChart>
+                </ResponsiveContainer>
               </Grid>
               
-              <Grid item xs={6}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>
+                  Training Details
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableBody>
+                      <TableRow>
+                        <TableCell><strong>Model</strong></TableCell>
+                        <TableCell>{getModelDisplayName(selectedTraining.model_type)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Dataset</strong></TableCell>
+                        <TableCell>{selectedTraining.dataset}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Status</strong></TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={selectedTraining.status} 
+                            sx={{ 
+                              backgroundColor: getStatusColor(selectedTraining.status),
+                              color: 'white'
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Progress</strong></TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ width: '100%', mr: 1 }}>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={trainingProgress[selectedTraining.id] || 0} 
+                                sx={{ height: 10, borderRadius: 5 }}
+                              />
+                            </Box>
+                            <Box sx={{ minWidth: 35 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                {`${Math.round(trainingProgress[selectedTraining.id] || 0)}%`}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Epochs</strong></TableCell>
+                        <TableCell>{`${selectedTraining.current_epoch}/${selectedTraining.epochs}`}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Best mAP</strong></TableCell>
+                        <TableCell>{selectedTraining.mAP}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Best Epoch</strong></TableCell>
+                        <TableCell>{selectedTraining.best_epoch}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Created</strong></TableCell>
+                        <TableCell>{selectedTraining.created_at}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom>
+                  Logs
+                </Typography>
                 <TextField
+                  multiline
                   fullWidth
-                  label="Podział walidacyjny"
-                  type="number"
-                  value={trainingParams.validationSplit}
-                  onChange={(e) => handleParamChange('validationSplit', parseFloat(e.target.value))}
-                  inputProps={{ step: 0.05, min: 0.1, max: 0.5 }}
-                  sx={{ mb: 2 }}
+                  variant="outlined"
+                  value={trainingLogs[selectedTraining.id] || ''}
+                  InputProps={{
+                    readOnly: true,
+                    style: { fontFamily: 'monospace', fontSize: '0.875rem' }
+                  }}
+                  minRows={10}
+                  maxRows={20}
                 />
               </Grid>
             </Grid>
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={trainingParams.augmentation}
-                  onChange={(e) => handleParamChange('augmentation', e.target.checked)}
-                />
-              }
-              label="Augmentacja danych"
-              sx={{ mb: 1, display: 'block' }}
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={trainingParams.earlyStop}
-                  onChange={(e) => handleParamChange('earlyStop', e.target.checked)}
-                />
-              }
-              label="Wczesne zatrzymanie"
-              sx={{ mb: 1, display: 'block' }}
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={trainingParams.classWeights}
-                  onChange={(e) => handleParamChange('classWeights', e.target.checked)}
-                />
-              }
-              label="Wagi klas"
-              sx={{ mb: 2, display: 'block' }}
-            />
-            
-            <Button
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewLogsOpen(false)}>Close</Button>
+          {selectedTraining && selectedTraining.status === 'running' && (
+            <Button 
+              onClick={() => {
+                handleStopTraining(selectedTraining.id);
+                setViewLogsOpen(false);
+              }} 
+              color="warning"
               variant="contained"
-              fullWidth
-              startIcon={<PlayArrow />}
-              onClick={handleStartTraining}
-              disabled={!selectedModel || !selectedDataset}
             >
-              Rozpocznij trening
+              Stop Training
             </Button>
-          </Paper>
-          
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Zasoby systemowe
-            </Typography>
-            
-            <Typography variant="subtitle1" gutterBottom>
-              Użycie GPU
-            </Typography>
-            
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Użycie:
-                </Typography>
-                <Typography variant="body2" fontWeight="bold">
-                  {activeTrainings.length > 0 ? '85%' : '0%'}
-                </Typography>
-              </Box>
-              
-              <LinearProgress 
-                variant="determinate" 
-                value={activeTrainings.length > 0 ? 85 : 0} 
-                sx={{ mb: 1 }} 
-              />
-            </Box>
-            
-            <Typography variant="subtitle1" gutterBottom>
-              Użycie pamięci
-            </Typography>
-            
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Użycie:
-                </Typography>
-                <Typography variant="body2" fontWeight="bold">
-                  {activeTrainings.length > 0 ? '6.2 GB / 8 GB' : '0.8 GB / 8 GB'}
-                </Typography>
-              </Box>
-              
-              <LinearProgress 
-                variant="determinate" 
-                value={activeTrainings.length > 0 ? 77.5 : 10} 
-                sx={{ mb: 1 }} 
-              />
-            </Box>
-            
-            <Typography variant="subtitle1" gutterBottom>
-              Temperatura GPU
-            </Typography>
-            
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Temperatura:
-                </Typography>
-                <Typography variant="body2" fontWeight="bold" color={activeTrainings.length > 0 ? 'warning.main' : 'text.primary'}>
-                  {activeTrainings.length > 0 ? '78°C' : '42°C'}
-                </Typography>
-              </Box>
-              
-              <LinearProgress 
-                variant="determinate" 
-                value={activeTrainings.length > 0 ? 78 : 42} 
-                sx={{ 
-                  mb: 1,
-                  '& .MuiLinearProgress-bar': {
-                    backgroundColor: activeTrainings.length > 0 ? '#ff9800' : '#4caf50'
-                  }
-                }} 
-              />
-            </Box>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} md={8}>
-          <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Aktywne treningi
-            </Typography>
-            
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : activeTrainings.length === 0 ? (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Brak aktywnych treningów. Skonfiguruj i rozpocznij nowy trening.
-              </Alert>
-            ) : (
-              <Box>
-                {activeTrainings.map(training => (
-                  <Card key={training.id} variant="outlined" sx={{ mb: 2 }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">
-                          {training.modelName}
-                        </Typography>
-                        
-                        <Box>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            size="small"
-                            startIcon={<Stop />}
-                            onClick={() => handleStopTraining(training.id)}
-                            sx={{ mr: 1 }}
-                          >
-                            Zatrzymaj
-                          </Button>
-                          
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<BarChart />}
-                          >
-                            Metryki
-                          </Button>
-                        </Box>
-                      </Box>
-                      
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            Zbiór danych: {training.datasetName}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Rozpoczęto: {formatDate(training.startTime)}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Czas trwania: {calculateDuration(training.startTime)}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Epoka: {training.currentEpoch} / {training.epochs}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Pozostały czas: {training.eta}
-                          </Typography>
-                        </Grid>
-                        
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Metryki:
-                          </Typography>
-                          
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            <MetricChip label="Loss" value={training.metrics.loss.toFixed(3)} />
-                            <MetricChip label="mAP@50" value={training.metrics.mAP50.toFixed(3)} />
-                            <MetricChip label="mAP@50-95" value={training.metrics.mAP50_95.toFixed(3)} />
-                            <MetricChip label="Precision" value={training.metrics.precision.toFixed(3)} />
-                            <MetricChip label="Recall" value={training.metrics.recall.toFixed(3)} />
-                          </Box>
-                        </Grid>
-                      </Grid>
-                      
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          Postęp: {training.progress}%
-                        </Typography>
-                        <LinearProgress variant="determinate" value={training.progress} />
-                      </Box>
-                    </CardContent>
-                  </Card>
-                ))}
-              </Box>
-            )}
-          </Paper>
-          
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Ukończone treningi
-            </Typography>
-            
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : completedTrainings.length === 0 ? (
-              <Alert severity="info">
-                Brak ukończonych treningów.
-              </Alert>
-            ) : (
-              <Box>
-                {completedTrainings.map(training => (
-                  <Card key={training.id} variant="outlined" sx={{ mb: 2 }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">
-                          {training.modelName}
-                        </Typography>
-                        
-                        <Box>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<Save />}
-                            onClick={() => handleExportModel(training.id)}
-                            sx={{ mr: 1 }}
-                          >
-                            Eksportuj
-                          </Button>
-                          
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<BarChart />}
-                          >
-                            Metryki
-                          </Button>
-                        </Box>
-                      </Box>
-                      
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            Zbiór danych: {training.datasetName}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Rozpoczęto: {formatDate(training.startTime)}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Zakończono: {formatDate(training.endTime)}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Czas trwania: {calculateDuration(training.startTime, training.endTime)}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            Epoki: {training.epochs}
-                          </Typography>
-                        </Grid>
-                        
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Metryki końcowe:
-                          </Typography>
-                          
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            <MetricChip label="Loss" value={training.metrics.loss.toFixed(3)} />
-                            <MetricChip label="mAP@50" value={training.metrics.mAP50.toFixed(3)} />
-                            <MetricChip label="mAP@50-95" value={training.metrics.mAP50_95.toFixed(3)} />
-                            <MetricChip label="Precision" value={training.metrics.precision.toFixed(3)} />
-                            <MetricChip label="Recall" value={training.metrics.recall.toFixed(3)} />
-                          </Box>
-                          
-                          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
-                            <CheckCircle sx={{ color: 'success.main', mr: 1 }} />
-                            <Typography variant="body2" color="success.main">
-                              Trening zakończony pomyślnie
-                            </Typography>
-                          </Box>
-                        </Grid>
-                      </Grid>
-                    </CardContent>
-                  </Card>
-                ))}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+          )}
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
-
-// Komponent MetricChip
-const MetricChip = ({ label, value }) => {
-  return (
-    <Box sx={{ 
-      display: 'inline-flex',
-      alignItems: 'center',
-      backgroundColor: '#e3f2fd',
-      borderRadius: 1,
-      px: 1,
-      py: 0.5,
-      mr: 1,
-      mb: 1
-    }}>
-      <Typography variant="caption" sx={{ mr: 0.5, fontWeight: 'bold' }}>
-        {label}:
-      </Typography>
-      <Typography variant="caption">
-        {value}
-      </Typography>
-    </Box>
-  );
-};
-
-// Komponent Switch
-function Switch({ checked, onChange }) {
-  return (
-    <div style={{ 
-      display: 'inline-block',
-      width: 40,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: checked ? '#3f51b5' : '#e0e0e0',
-      position: 'relative',
-      cursor: 'pointer',
-      transition: 'background-color 0.3s',
-    }} onClick={onChange ? () => onChange({ target: { checked: !checked } }) : undefined}>
-      <div style={{
-        position: 'absolute',
-        top: 2,
-        left: checked ? 22 : 2,
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: 'white',
-        transition: 'left 0.3s',
-      }} />
-    </div>
-  );
-}
-
-// Komponent FormControlLabel
-function FormControlLabel({ control, label, sx }) {
-  return (
-    <div style={{ 
-      display: 'flex',
-      alignItems: 'center',
-      marginBottom: sx?.mb === 1 ? '8px' : 0,
-      display: sx?.display === 'block' ? 'block' : 'flex',
-    }}>
-      {control}
-      <span style={{ marginLeft: 8 }}>{label}</span>
-    </div>
-  );
-}
-
-// Komponent LinearProgress
-function LinearProgress({ variant, value, sx }) {
-  const getColor = (value) => {
-    if (value > 80) return '#f44336';
-    if (value > 60) return '#ff9800';
-    if (value > 30) return '#4caf50';
-    return '#2196f3';
-  };
-  
-  const backgroundColor = sx?.['& .MuiLinearProgress-bar']?.backgroundColor || getColor(value);
-  
-  return (
-    <div style={{ 
-      width: '100%',
-      height: 8,
-      backgroundColor: '#e0e0e0',
-      borderRadius: 4,
-      overflow: 'hidden',
-      marginBottom: sx?.mb === 1 ? '8px' : 0,
-    }}>
-      <div style={{
-        width: `${value}%`,
-        height: '100%',
-        backgroundColor: backgroundColor,
-        transition: 'width 0.3s ease',
-      }} />
-    </div>
-  );
-}
-
-// Komponent CircularProgress
-function CircularProgress() {
-  return (
-    <div style={{ 
-      display: 'inline-block',
-      width: 40,
-      height: 40,
-      border: '4px solid rgba(63, 81, 181, 0.1)',
-      borderRadius: '50%',
-      borderTopColor: '#3f51b5',
-      animation: 'spin 1s linear infinite',
-    }} />
-  );
-}
 
 export default TrainingPage;

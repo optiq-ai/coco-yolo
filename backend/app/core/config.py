@@ -1,9 +1,9 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic import PostgresDsn, validator
 from typing import Optional, Dict, Any, List
 
-class Settings(BaseSettings):
+class Settings(PydanticBaseSettings):
     # Podstawowe ustawienia aplikacji
     PROJECT_NAME: str = "YOLO-COCO"
     API_V1_STR: str = "/api/v1"

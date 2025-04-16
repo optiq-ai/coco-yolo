@@ -40,6 +40,9 @@ class DatasetResponse(DatasetBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    success: bool = True
+    message: str = "Operation successful"
+    data: Optional[Any] = None
 
     class Config:
         orm_mode = True
@@ -47,6 +50,25 @@ class DatasetResponse(DatasetBase):
 class DatasetList(BaseModel):
     items: List[DatasetResponse]
     total: int
+
+# Dodane brakujące klasy
+class DatasetsResponse(BaseModel):
+    success: bool
+    message: str
+    data: Optional[List[DatasetResponse]] = None
+    total: Optional[int] = None
+
+class DatasetWithStats(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    images_count: int = 0
+    labeled_images_count: int = 0
+
+    class Config:
+        orm_mode = True
 
 # Schematy dla klas
 class ClassBase(BaseModel):

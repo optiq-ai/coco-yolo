@@ -29,7 +29,6 @@ import {
   Select,
   Chip,
   CircularProgress,
-  // Explicitly import the components that were causing errors
   FormControlLabel,
   Switch
 } from '@mui/material';
@@ -53,7 +52,6 @@ import {
   Tooltip, 
   Legend, 
   ResponsiveContainer,
-  // Explicitly import the components that were causing errors
   BarChart,
   Bar
 } from 'recharts';

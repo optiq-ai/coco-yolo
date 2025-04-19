@@ -1,5 +1,4 @@
 FROM node:20-alpine as build
-
 WORKDIR /app
 
 # Kopiowanie plików package.json i package-lock.json
@@ -10,6 +9,10 @@ RUN npm install
 
 # Kopiowanie kodu źródłowego
 COPY . .
+
+# Dodanie zmiennej środowiskowej dla React
+ENV NODE_ENV=production
+ENV GENERATE_SOURCEMAP=false
 
 # Budowanie aplikacji
 RUN npm run build

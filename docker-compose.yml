@@ -1,5 +1,4 @@
 version: '3'
-
 services:
   # Frontend - React
   frontend:
@@ -8,12 +7,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "80:80"
+    volumes:
+      - ./frontend/.env:/app/.env
     depends_on:
       - backend
     networks:
       - app-network
     restart: unless-stopped
-
   # Backend API - FastAPI
   backend:
     build:
@@ -35,7 +35,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
   # Worker dla zadań YOLO
   worker:
     build:
@@ -56,7 +55,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
   # Baza danych PostgreSQL
   db:
     image: postgres:14-alpine
@@ -71,7 +69,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
   # Redis dla kolejki zadań
   redis:
     image: redis:alpine
@@ -82,7 +79,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
   # MinIO dla przechowywania plików
   minio:
     image: minio/minio
@@ -98,7 +94,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
   # Inicjalizacja MinIO - tworzy buckety
   minio-init:
     image: minio/mc
@@ -119,12 +114,10 @@ services:
       "
     networks:
       - app-network
-
 volumes:
   postgres_data:
   redis_data:
   minio_data:
-
 networks:
   app-network:
     driver: bridge

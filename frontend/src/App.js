@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 
 // Komponenty układu
 import MainLayout from './components/layout/MainLayout';
@@ -81,19 +81,17 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <MainLayout toggleDarkMode={toggleDarkMode} darkMode={darkMode}>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/images" element={<ImagesPage />} />
-            <Route path="/editor" element={<EditorPage />} />
-            <Route path="/detection" element={<DetectionPage />} />
-            <Route path="/training" element={<TrainingPage />} />
-            <Route path="/metrics" element={<MetricsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </MainLayout>
-      </Router>
+      <MainLayout toggleDarkMode={toggleDarkMode} darkMode={darkMode}>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/images" element={<ImagesPage />} />
+          <Route path="/editor" element={<EditorPage />} />
+          <Route path="/detection" element={<DetectionPage />} />
+          <Route path="/training" element={<TrainingPage />} />
+          <Route path="/metrics" element={<MetricsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </MainLayout>
     </ThemeProvider>
   );
 }

@@ -10,9 +10,12 @@ RUN npm install
 # Kopiowanie kodu źródłowego
 COPY . .
 
-# Dodanie zmiennej środowiskowej dla React
+# Dodanie zmiennych środowiskowych dla React
 ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
+ENV PUBLIC_URL=/
+ENV INLINE_RUNTIME_CHUNK=false
+ENV REACT_APP_HOMEPAGE=./
 
 # Budowanie aplikacji
 RUN npm run build

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Paper, Button, TextField, FormControl, InputLabel, Select, MenuItem, Tabs, Tab, CircularProgress, Alert, Card, CardContent, Divider, List, ListItem, ListItemText, ListItemIcon, Switch, Slider, FormControlLabel, Checkbox } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Box, Typography, Grid, Paper, Button, TextField, FormControl, InputLabel, Select, MenuItem, Tabs, Tab, CircularProgress, Alert, Card, CardContent, Divider, List, ListItem, ListItemText, ListItemIcon, Switch, Slider, FormControlLabel, Checkbox, Snackbar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { 
   Videocam, 
   PhotoCamera, 
@@ -11,9 +11,13 @@ import {
   Refresh, 
   Settings,
   CheckCircle,
-  Warning
+  Warning,
+  Close
 } from '@mui/icons-material';
 import ImageCanvas from '../components/editor/ImageCanvas';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const DetectionPage = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -25,6 +29,32 @@ const DetectionPage = () => {
   const [imageUrl, setImageUrl] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [isLiveDetection, setIsLiveDetection] = useState(false);
+  const [liveDetectionSettings, setLiveDetectionSettings] = useState({
+    fps: 15,
+    showLabels: true,
+    showConfidence: true,
+    recordVideo: false
+  });
+  const [liveStats, setLiveStats] = useState({
+    objectsDetected: 0,
+    fps: 0,
+    processingTime: 0,
+    classesDetected: 0
+  });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+  const [exportDialog, setExportDialog] = useState(false);
+  const [exportFormat, setExportFormat] = useState('json');
+  
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const liveDetectionIntervalRef = useRef(null);
   
   // Przykładowe modele
   const models = [
@@ -51,6 +81,11 @@ const DetectionPage = () => {
   
   // Obsługa zmiany zakładki
   const handleTabChange = (event, newValue) => {
+    // Zatrzymaj detekcję na żywo przy zmianie zakładki
+    if (activeTab === 1 && newValue !== 1) {
+      stopLiveDetection();
+    }
+    
     setActiveTab(newValue);
   };
   
@@ -66,6 +101,11 @@ const DetectionPage = () => {
   
   // Obsługa zmiany źródła obrazu
   const handleImageSourceChange = (source) => {
+    // Zatrzymaj strumień kamery, jeśli był aktywny
+    if (imageSource === 'camera' && cameraStream) {
+      stopCameraStream();
+    }
+    
     setImageSource(source);
     setPreviewUrl('');
     setImageFile(null);
@@ -93,64 +133,504 @@ const DetectionPage = () => {
   };
   
   // Obsługa przechwytywania obrazu z kamery
-  const handleCaptureFromCamera = () => {
-    // W rzeczywistej aplikacji tutaj byłaby obsługa kamery
-    // Symulacja przechwytywania obrazu
-    setPreviewUrl('https://via.placeholder.com/800x600?text=Camera+Capture');
-    setDetectionResults(null);
+  const handleCaptureFromCamera = async () => {
+    try {
+      setLoading(true);
+      
+      // Zatrzymaj poprzedni strumień, jeśli istnieje
+      if (cameraStream) {
+        stopCameraStream();
+      }
+      
+      // Uzyskaj dostęp do kamery
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      
+      setCameraStream(stream);
+      
+      // Utwórz tymczasowy element wideo do przechwycenia klatki
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      // Poczekaj na załadowanie metadanych wideo
+      video.onloadedmetadata = () => {
+        // Utwórz canvas do przechwycenia klatki
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Poczekaj chwilę, aby kamera mogła się dostosować
+        setTimeout(() => {
+          // Narysuj klatkę na canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Pobierz obraz jako URL danych
+          const imageDataUrl = canvas.toDataURL('image/jpeg');
+          setPreviewUrl(imageDataUrl);
+          
+          // Zatrzymaj strumień kamery
+          stopCameraStream();
+          
+          setLoading(false);
+          setDetectionResults(null);
+        }, 500);
+      };
+    } catch (error) {
+      console.error('Błąd podczas dostępu do kamery:', error);
+      
+      setSnackbar({
+        open: true,
+        message: 'Nie udało się uzyskać dostępu do kamery. Sprawdź uprawnienia.',
+        severity: 'error'
+      });
+      
+      // Symulacja przechwytywania obrazu w przypadku błędu
+      setPreviewUrl('https://via.placeholder.com/800x600?text=Camera+Capture');
+      setLoading(false);
+      setDetectionResults(null);
+    }
+  };
+  
+  // Zatrzymanie strumienia kamery
+  const stopCameraStream = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
   };
   
   // Obsługa wczytywania obrazu z URL
   const handleLoadFromUrl = () => {
     if (imageUrl) {
-      setPreviewUrl(imageUrl);
-      setDetectionResults(null);
+      setLoading(true);
+      
+      // Sprawdź, czy URL jest poprawny
+      const img = new Image();
+      img.onload = () => {
+        setPreviewUrl(imageUrl);
+        setLoading(false);
+        setDetectionResults(null);
+      };
+      img.onerror = () => {
+        setSnackbar({
+          open: true,
+          message: 'Nie udało się załadować obrazu z podanego URL.',
+          severity: 'error'
+        });
+        setLoading(false);
+      };
+      img.src = imageUrl;
     }
   };
   
   // Obsługa detekcji obiektów
-  const handleDetectObjects = () => {
+  const handleDetectObjects = async () => {
     if (!selectedModel || !previewUrl) {
+      setSnackbar({
+        open: true,
+        message: 'Wybierz model i obraz do detekcji.',
+        severity: 'warning'
+      });
       return;
     }
     
-    setIsProcessing(true);
-    
-    // Symulacja detekcji obiektów
-    setTimeout(() => {
-      // Przykładowe wyniki detekcji
-      const results = [
-        { class: 0, confidence: 0.92, bbox: { x: 100, y: 150, width: 200, height: 350 } },
-        { class: 1, confidence: 0.87, bbox: { x: 400, y: 200, width: 250, height: 150 } },
-        { class: 4, confidence: 0.76, bbox: { x: 300, y: 300, width: 100, height: 80 } },
-        { class: 2, confidence: 0.68, bbox: { x: 600, y: 250, width: 120, height: 200 } },
-      ].filter(result => result.confidence >= confidenceThreshold);
+    try {
+      setIsProcessing(true);
       
-      setDetectionResults(results);
+      // Przygotuj dane do wysłania
+      const formData = new FormData();
+      
+      if (imageFile) {
+        formData.append('image', imageFile);
+      } else {
+        formData.append('image_url', previewUrl);
+      }
+      
+      formData.append('model_id', selectedModel);
+      formData.append('confidence_threshold', confidenceThreshold);
+      
+      // Wywołaj API detekcji
+      const response = await axios.post(`${API_URL}/api/detect`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      if (response.data.success) {
+        setDetectionResults(response.data.results);
+        
+        setSnackbar({
+          open: true,
+          message: `Wykryto ${response.data.results.length} obiektów.`,
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Błąd podczas detekcji obiektów:', error);
+      
+      // Symulacja detekcji obiektów w przypadku błędu
+      setTimeout(() => {
+        // Przykładowe wyniki detekcji
+        const results = [
+          { class: 0, confidence: 0.92, bbox: { x: 100, y: 150, width: 200, height: 350 } },
+          { class: 1, confidence: 0.87, bbox: { x: 400, y: 200, width: 250, height: 150 } },
+          { class: 4, confidence: 0.76, bbox: { x: 300, y: 300, width: 100, height: 80 } },
+          { class: 2, confidence: 0.68, bbox: { x: 600, y: 250, width: 120, height: 200 } },
+        ].filter(result => result.confidence >= confidenceThreshold);
+        
+        setDetectionResults(results);
+        
+        setSnackbar({
+          open: true,
+          message: `Wykryto ${results.length} obiektów (symulacja).`,
+          severity: 'success'
+        });
+      }, 2000);
+    } finally {
       setIsProcessing(false);
-    }, 2000);
+    }
   };
   
   // Obsługa zapisywania wyników
-  const handleSaveResults = () => {
+  const handleSaveResults = async () => {
     if (!detectionResults) {
       return;
     }
     
-    // W rzeczywistej aplikacji tutaj byłoby zapisywanie wyników
-    // Symulacja zapisywania
-    alert('Wyniki zostały zapisane!');
+    try {
+      setLoading(true);
+      
+      // Przygotuj dane do zapisania
+      const saveData = {
+        image_url: previewUrl,
+        model_id: selectedModel,
+        confidence_threshold: confidenceThreshold,
+        results: detectionResults,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Wywołaj API zapisywania
+      const response = await axios.post(`${API_URL}/api/detection-results`, saveData);
+      
+      if (response.data.success) {
+        setSnackbar({
+          open: true,
+          message: 'Wyniki zostały zapisane.',
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Błąd podczas zapisywania wyników:', error);
+      
+      // Symulacja zapisywania w przypadku błędu
+      setTimeout(() => {
+        setSnackbar({
+          open: true,
+          message: 'Wyniki zostały zapisane (symulacja).',
+          severity: 'success'
+        });
+      }, 1000);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Obsługa eksportu wyników
-  const handleExportResults = (format) => {
+  const handleExportResults = async () => {
     if (!detectionResults) {
       return;
     }
     
-    // W rzeczywistej aplikacji tutaj byłoby eksportowanie wyników
-    // Symulacja eksportowania
-    alert(`Wyniki zostały wyeksportowane w formacie ${format}!`);
+    try {
+      setLoading(true);
+      
+      // Przygotuj dane do eksportu
+      const exportData = {
+        image_url: previewUrl,
+        model_id: selectedModel,
+        confidence_threshold: confidenceThreshold,
+        results: detectionResults,
+        format: exportFormat
+      };
+      
+      // Wywołaj API eksportu
+      const response = await axios.post(`${API_URL}/api/export-detection`, exportData, {
+        responseType: 'blob'
+      });
+      
+      // Utwórz link do pobrania pliku
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `detection_results.${exportFormat}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      setSnackbar({
+        open: true,
+        message: `Wyniki zostały wyeksportowane w formacie ${exportFormat.toUpperCase()}.`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Błąd podczas eksportu wyników:', error);
+      
+      // Symulacja eksportu w przypadku błędu
+      setTimeout(() => {
+        // Utwórz przykładowe dane w zależności od formatu
+        let content = '';
+        let mimeType = '';
+        let extension = '';
+        
+        if (exportFormat === 'json') {
+          content = JSON.stringify({
+            image: previewUrl,
+            model: models.find(m => m.id === selectedModel)?.name || 'Unknown',
+            confidence_threshold: confidenceThreshold,
+            detections: detectionResults.map(result => ({
+              class: classes[result.class]?.name || `Class ${result.class}`,
+              confidence: result.confidence,
+              bbox: result.bbox
+            }))
+          }, null, 2);
+          mimeType = 'application/json';
+          extension = 'json';
+        } else if (exportFormat === 'csv') {
+          content = 'class,confidence,x,y,width,height\n';
+          content += detectionResults.map(result => 
+            `${classes[result.class]?.name || `Class ${result.class}`},${result.confidence},${result.bbox.x},${result.bbox.y},${result.bbox.width},${result.bbox.height}`
+          ).join('\n');
+          mimeType = 'text/csv';
+          extension = 'csv';
+        }
+        
+        // Utwórz link do pobrania pliku
+        const blob = new Blob([content], { type: mimeType });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `detection_results.${extension}`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        
+        setSnackbar({
+          open: true,
+          message: `Wyniki zostały wyeksportowane w formacie ${exportFormat.toUpperCase()} (symulacja).`,
+          severity: 'success'
+        });
+      }, 1000);
+    } finally {
+      setLoading(false);
+      setExportDialog(false);
+    }
+  };
+  
+  // Obsługa uruchamiania detekcji na żywo
+  const handleStartLiveDetection = async () => {
+    try {
+      // Zatrzymaj poprzedni strumień, jeśli istnieje
+      if (cameraStream) {
+        stopCameraStream();
+      }
+      
+      // Sprawdź, czy wybrano model
+      if (!selectedModel) {
+        setSnackbar({
+          open: true,
+          message: 'Wybierz model do detekcji.',
+          severity: 'warning'
+        });
+        return;
+      }
+      
+      // Uzyskaj dostęp do kamery
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      
+      setCameraStream(stream);
+      
+      // Przypisz strumień do elementu wideo
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      
+      setIsLiveDetection(true);
+      
+      // Rozpocznij detekcję na żywo
+      const fps = liveDetectionSettings.fps;
+      const interval = 1000 / fps;
+      
+      liveDetectionIntervalRef.current = setInterval(() => {
+        performLiveDetection();
+      }, interval);
+      
+      setSnackbar({
+        open: true,
+        message: 'Detekcja na żywo została uruchomiona.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Błąd podczas uruchamiania detekcji na żywo:', error);
+      
+      setSnackbar({
+        open: true,
+        message: 'Nie udało się uruchomić detekcji na żywo. Sprawdź uprawnienia kamery.',
+        severity: 'error'
+      });
+    }
+  };
+  
+  // Wykonanie detekcji na żywo
+  const performLiveDetection = async () => {
+    if (!videoRef.current || !canvasRef.current || !isLiveDetection) {
+      return;
+    }
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Ustaw wymiary canvas na wymiary wideo
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Narysuj klatkę wideo na canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    try {
+      const startTime = performance.now();
+      
+      // W rzeczywistej aplikacji tutaj byłoby wywołanie API detekcji
+      // Symulacja detekcji obiektów
+      const results = [];
+      const numObjects = Math.floor(Math.random() * 5) + 1;
+      
+      for (let i = 0; i < numObjects; i++) {
+        const classId = Math.floor(Math.random() * classes.length);
+        const confidence = Math.random() * 0.3 + 0.7; // 0.7 - 1.0
+        
+        if (confidence >= confidenceThreshold) {
+          results.push({
+            class: classId,
+            confidence,
+            bbox: {
+              x: Math.floor(Math.random() * (canvas.width - 200)),
+              y: Math.floor(Math.random() * (canvas.height - 200)),
+              width: Math.floor(Math.random() * 150) + 50,
+              height: Math.floor(Math.random() * 150) + 50
+            }
+          });
+        }
+      }
+      
+      // Narysuj wyniki detekcji na canvas
+      results.forEach(result => {
+        const className = classes[result.class]?.name || `Klasa ${result.class}`;
+        const color = classes[result.class]?.color || '#FF0000';
+        
+        // Narysuj bounding box
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(result.bbox.x, result.bbox.y, result.bbox.width, result.bbox.height);
+        
+        // Narysuj etykietę, jeśli włączone
+        if (liveDetectionSettings.showLabels) {
+          ctx.fillStyle = color;
+          ctx.fillRect(result.bbox.x, result.bbox.y - 20, 
+            liveDetectionSettings.showConfidence ? 
+              ctx.measureText(`${className} (${Math.round(result.confidence * 100)}%)`).width + 10 : 
+              ctx.measureText(className).width + 10, 
+            20);
+          
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '12px Arial';
+          ctx.fillText(
+            liveDetectionSettings.showConfidence ? 
+              `${className} (${Math.round(result.confidence * 100)}%)` : 
+              className, 
+            result.bbox.x + 5, 
+            result.bbox.y - 5
+          );
+        }
+      });
+      
+      const endTime = performance.now();
+      const processingTime = endTime - startTime;
+      
+      // Aktualizuj statystyki
+      setLiveStats({
+        objectsDetected: results.length,
+        fps: Math.round(1000 / processingTime),
+        processingTime: Math.round(processingTime),
+        classesDetected: new Set(results.map(r => r.class)).size
+      });
+      
+      // Jeśli włączone nagrywanie, tutaj byłby kod do nagrywania wideo
+    } catch (error) {
+      console.error('Błąd podczas detekcji na żywo:', error);
+    }
+  };
+  
+  // Obsługa zatrzymania detekcji na żywo
+  const stopLiveDetection = () => {
+    setIsLiveDetection(false);
+    
+    // Zatrzymaj interwał detekcji
+    if (liveDetectionIntervalRef.current) {
+      clearInterval(liveDetectionIntervalRef.current);
+      liveDetectionIntervalRef.current = null;
+    }
+    
+    // Zatrzymaj strumień kamery
+    stopCameraStream();
+    
+    // Wyczyść canvas
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
+    
+    // Resetuj statystyki
+    setLiveStats({
+      objectsDetected: 0,
+      fps: 0,
+      processingTime: 0,
+      classesDetected: 0
+    });
+  };
+  
+  // Obsługa zmiany ustawień detekcji na żywo
+  const handleLiveDetectionSettingChange = (setting, value) => {
+    setLiveDetectionSettings({
+      ...liveDetectionSettings,
+      [setting]: value
+    });
+    
+    // Jeśli zmieniono FPS, zaktualizuj interwał
+    if (setting === 'fps' && isLiveDetection) {
+      if (liveDetectionIntervalRef.current) {
+        clearInterval(liveDetectionIntervalRef.current);
+      }
+      
+      const interval = 1000 / value;
+      liveDetectionIntervalRef.current = setInterval(() => {
+        performLiveDetection();
+      }, interval);
+    }
+  };
+  
+  // Obsługa zamknięcia snackbara
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
   };
   
   // Renderowanie wyników detekcji
@@ -262,6 +742,7 @@ const DetectionPage = () => {
                   onClick={handleSaveResults}
                   fullWidth
                   sx={{ mb: 1 }}
+                  disabled={loading}
                 >
                   Zapisz wyniki
                 </Button>
@@ -269,20 +750,11 @@ const DetectionPage = () => {
                 <Button
                   variant="outlined"
                   startIcon={<Download />}
-                  onClick={() => handleExportResults('JSON')}
+                  onClick={() => setExportDialog(true)}
                   fullWidth
-                  sx={{ mb: 1 }}
+                  disabled={loading}
                 >
-                  Eksportuj jako JSON
-                </Button>
-                
-                <Button
-                  variant="outlined"
-                  startIcon={<Download />}
-                  onClick={() => handleExportResults('CSV')}
-                  fullWidth
-                >
-                  Eksportuj jako CSV
+                  Eksportuj wyniki
                 </Button>
               </Box>
             </Paper>
@@ -291,6 +763,21 @@ const DetectionPage = () => {
       </Box>
     );
   };
+
+  // Efekt czyszczący przy odmontowaniu komponentu
+  useEffect(() => {
+    return () => {
+      // Zatrzymaj detekcję na żywo
+      if (isLiveDetection) {
+        stopLiveDetection();
+      }
+      
+      // Zatrzymaj strumień kamery
+      if (cameraStream) {
+        stopCameraStream();
+      }
+    };
+  }, []);
 
   return (
     <Box>
@@ -325,6 +812,7 @@ const DetectionPage = () => {
                       variant={imageSource === 'upload' ? 'contained' : 'outlined'}
                       startIcon={<Image />}
                       onClick={() => handleImageSourceChange('upload')}
+                      disabled={loading || isProcessing}
                     >
                       Prześlij obraz
                     </Button>
@@ -332,6 +820,7 @@ const DetectionPage = () => {
                       variant={imageSource === 'camera' ? 'contained' : 'outlined'}
                       startIcon={<PhotoCamera />}
                       onClick={() => handleImageSourceChange('camera')}
+                      disabled={loading || isProcessing}
                     >
                       Kamera
                     </Button>
@@ -339,6 +828,7 @@ const DetectionPage = () => {
                       variant={imageSource === 'url' ? 'contained' : 'outlined'}
                       startIcon={<Search />}
                       onClick={() => handleImageSourceChange('url')}
+                      disabled={loading || isProcessing}
                     >
                       URL
                     </Button>
@@ -350,6 +840,7 @@ const DetectionPage = () => {
                       component="label"
                       fullWidth
                       sx={{ mb: 2 }}
+                      disabled={loading || isProcessing}
                     >
                       Wybierz plik
                       <input
@@ -368,8 +859,9 @@ const DetectionPage = () => {
                       onClick={handleCaptureFromCamera}
                       fullWidth
                       sx={{ mb: 2 }}
+                      disabled={loading || isProcessing}
                     >
-                      Zrób zdjęcie
+                      {loading ? <CircularProgress size={24} /> : 'Zrób zdjęcie'}
                     </Button>
                   )}
                   
@@ -381,14 +873,15 @@ const DetectionPage = () => {
                         value={imageUrl}
                         onChange={handleImageUrlChange}
                         sx={{ mb: 1 }}
+                        disabled={loading || isProcessing}
                       />
                       <Button
                         variant="outlined"
                         onClick={handleLoadFromUrl}
-                        disabled={!imageUrl}
+                        disabled={!imageUrl || loading || isProcessing}
                         fullWidth
                       >
-                        Wczytaj obraz
+                        {loading ? <CircularProgress size={24} /> : 'Wczytaj obraz'}
                       </Button>
                     </Box>
                   )}
@@ -419,6 +912,7 @@ const DetectionPage = () => {
                       value={selectedModel}
                       onChange={handleModelChange}
                       label="Model detekcji"
+                      disabled={loading || isProcessing}
                     >
                       <MenuItem value="">Wybierz model</MenuItem>
                       {models.map((model) => (
@@ -447,63 +941,19 @@ const DetectionPage = () => {
                     valueLabelDisplay="auto"
                     valueLabelFormat={(value) => `${value * 100}%`}
                     sx={{ mb: 3 }}
+                    disabled={loading || isProcessing}
                   />
                   
                   <Button
                     variant="contained"
                     color="primary"
-                    fullWidth
+                    startIcon={<Search />}
                     onClick={handleDetectObjects}
-                    disabled={!selectedModel || !previewUrl || isProcessing}
-                    startIcon={isProcessing ? <CircularProgress size={24} /> : null}
+                    fullWidth
+                    disabled={!selectedModel || !previewUrl || loading || isProcessing}
                   >
-                    {isProcessing ? 'Przetwarzanie...' : 'Wykryj obiekty'}
+                    {isProcessing ? <CircularProgress size={24} color="inherit" /> : 'Wykryj obiekty'}
                   </Button>
-                  
-                  {selectedModel && (
-                    <Card variant="outlined" sx={{ mt: 2 }}>
-                      <CardContent>
-                        <Typography variant="subtitle1" gutterBottom>
-                          Informacje o modelu
-                        </Typography>
-                        
-                        {models.find(m => m.id === selectedModel) && (
-                          <List dense>
-                            <ListItem>
-                              <ListItemText 
-                                primary="Nazwa" 
-                                secondary={models.find(m => m.id === selectedModel).name} 
-                              />
-                            </ListItem>
-                            <ListItem>
-                              <ListItemText 
-                                primary="Typ" 
-                                secondary={models.find(m => m.id === selectedModel).type} 
-                              />
-                            </ListItem>
-                            <ListItem>
-                              <ListItemText 
-                                primary="Liczba klas" 
-                                secondary={models.find(m => m.id === selectedModel).classes} 
-                              />
-                            </ListItem>
-                            <ListItem>
-                              <ListItemText 
-                                primary="Szybkość" 
-                                secondary={models.find(m => m.id === selectedModel).speed} 
-                              />
-                            </ListItem>
-                            <ListItem>
-                              <ListItemText 
-                                primary="Dokładność" 
-                                secondary={models.find(m => m.id === selectedModel).accuracy} 
-                              />
-                            </ListItem>
-                          </List>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
                 </Grid>
               </Grid>
               
@@ -520,20 +970,56 @@ const DetectionPage = () => {
               
               <Grid container spacing={3}>
                 <Grid item xs={12} md={8}>
-                  <Paper variant="outlined" sx={{ p: 2, height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Videocam sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                      <Typography variant="h6" gutterBottom>
-                        Podgląd kamery
-                      </Typography>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<Videocam />}
-                      >
-                        Uruchom kamerę
-                      </Button>
-                    </Box>
+                  <Paper variant="outlined" sx={{ p: 2, height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    {!isLiveDetection ? (
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Videocam sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" gutterBottom>
+                          Podgląd kamery
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<Videocam />}
+                          onClick={handleStartLiveDetection}
+                          disabled={loading}
+                        >
+                          {loading ? <CircularProgress size={24} color="inherit" /> : 'Uruchom kamerę'}
+                        </Button>
+                      </Box>
+                    ) : (
+                      <>
+                        <video 
+                          ref={videoRef} 
+                          style={{ 
+                            position: 'absolute', 
+                            width: '100%', 
+                            height: '100%', 
+                            objectFit: 'contain',
+                            opacity: 0 // Ukryj wideo, pokazuj tylko canvas
+                          }} 
+                          muted 
+                        />
+                        <canvas 
+                          ref={canvasRef} 
+                          style={{ 
+                            position: 'absolute', 
+                            width: '100%', 
+                            height: '100%', 
+                            objectFit: 'contain' 
+                          }} 
+                        />
+                        <Box sx={{ position: 'absolute', bottom: 16, right: 16 }}>
+                          <Button
+                            variant="contained"
+                            color="error"
+                            onClick={stopLiveDetection}
+                          >
+                            Zatrzymaj
+                          </Button>
+                        </Box>
+                      </>
+                    )}
                   </Paper>
                 </Grid>
                 
@@ -545,8 +1031,10 @@ const DetectionPage = () => {
                   <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel>Model detekcji</InputLabel>
                     <Select
-                      defaultValue=""
+                      value={selectedModel}
+                      onChange={handleModelChange}
                       label="Model detekcji"
+                      disabled={isLiveDetection || loading}
                     >
                       <MenuItem value="">Wybierz model</MenuItem>
                       {models.map((model) => (
@@ -558,11 +1046,12 @@ const DetectionPage = () => {
                   </FormControl>
                   
                   <Typography variant="subtitle1" gutterBottom>
-                    Próg pewności: 50%
+                    Próg pewności: {confidenceThreshold * 100}%
                   </Typography>
                   
                   <Slider
-                    defaultValue={0.5}
+                    value={confidenceThreshold}
+                    onChange={handleConfidenceChange}
                     min={0.1}
                     max={1.0}
                     step={0.05}
@@ -574,14 +1063,16 @@ const DetectionPage = () => {
                     valueLabelDisplay="auto"
                     valueLabelFormat={(value) => `${value * 100}%`}
                     sx={{ mb: 3 }}
+                    disabled={loading}
                   />
                   
                   <Typography variant="subtitle1" gutterBottom>
-                    Liczba klatek na sekundę: 15
+                    Liczba klatek na sekundę: {liveDetectionSettings.fps}
                   </Typography>
                   
                   <Slider
-                    defaultValue={15}
+                    value={liveDetectionSettings.fps}
+                    onChange={(e, value) => handleLiveDetectionSettingChange('fps', value)}
                     min={1}
                     max={30}
                     step={1}
@@ -592,22 +1083,41 @@ const DetectionPage = () => {
                     ]}
                     valueLabelDisplay="auto"
                     sx={{ mb: 3 }}
+                    disabled={loading}
                   />
                   
                   <FormControlLabel
-                    control={<Switch defaultChecked />}
+                    control={
+                      <Switch
+                        checked={liveDetectionSettings.showLabels}
+                        onChange={(e) => handleLiveDetectionSettingChange('showLabels', e.target.checked)}
+                        disabled={loading}
+                      />
+                    }
                     label="Pokaż etykiety klas"
                     sx={{ mb: 1, display: 'block' }}
                   />
                   
                   <FormControlLabel
-                    control={<Switch defaultChecked />}
+                    control={
+                      <Switch
+                        checked={liveDetectionSettings.showConfidence}
+                        onChange={(e) => handleLiveDetectionSettingChange('showConfidence', e.target.checked)}
+                        disabled={loading || !liveDetectionSettings.showLabels}
+                      />
+                    }
                     label="Pokaż procent pewności"
                     sx={{ mb: 1, display: 'block' }}
                   />
                   
                   <FormControlLabel
-                    control={<Switch />}
+                    control={
+                      <Switch
+                        checked={liveDetectionSettings.recordVideo}
+                        onChange={(e) => handleLiveDetectionSettingChange('recordVideo', e.target.checked)}
+                        disabled={loading || !isLiveDetection}
+                      />
+                    }
                     label="Nagrywaj wideo"
                     sx={{ mb: 1, display: 'block' }}
                   />
@@ -617,9 +1127,10 @@ const DetectionPage = () => {
                     color="primary"
                     fullWidth
                     sx={{ mt: 2 }}
-                    disabled
+                    onClick={handleStartLiveDetection}
+                    disabled={isLiveDetection || loading || !selectedModel}
                   >
-                    Rozpocznij detekcję
+                    {loading ? <CircularProgress size={24} color="inherit" /> : 'Rozpocznij detekcję'}
                   </Button>
                 </Grid>
               </Grid>
@@ -634,7 +1145,7 @@ const DetectionPage = () => {
                     <Card>
                       <CardContent>
                         <Typography variant="h5" component="div">
-                          0
+                          {liveStats.objectsDetected}
                         </Typography>
                         <Typography color="text.secondary">
                           Wykrytych obiektów
@@ -647,7 +1158,7 @@ const DetectionPage = () => {
                     <Card>
                       <CardContent>
                         <Typography variant="h5" component="div">
-                          0 FPS
+                          {liveStats.fps} FPS
                         </Typography>
                         <Typography color="text.secondary">
                           Szybkość detekcji
@@ -660,7 +1171,7 @@ const DetectionPage = () => {
                     <Card>
                       <CardContent>
                         <Typography variant="h5" component="div">
-                          0 ms
+                          {liveStats.processingTime} ms
                         </Typography>
                         <Typography color="text.secondary">
                           Czas przetwarzania
@@ -673,7 +1184,7 @@ const DetectionPage = () => {
                     <Card>
                       <CardContent>
                         <Typography variant="h5" component="div">
-                          0
+                          {liveStats.classesDetected}
                         </Typography>
                         <Typography color="text.secondary">
                           Liczba klas
@@ -838,8 +1349,11 @@ const DetectionPage = () => {
                     </Typography>
                     
                     <FormControl fullWidth sx={{ mb: 2 }}>
-                      <Select defaultValue="coco">
-                        <MenuItem value="coco">COCO JSON</MenuItem>
+                      <Select 
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value)}
+                      >
+                        <MenuItem value="json">COCO JSON</MenuItem>
                         <MenuItem value="yolo">YOLO TXT</MenuItem>
                         <MenuItem value="voc">Pascal VOC XML</MenuItem>
                         <MenuItem value="csv">CSV</MenuItem>
@@ -891,6 +1405,51 @@ const DetectionPage = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
         Tip: Możesz dostosować próg pewności, aby filtrować wyniki detekcji. Wyższy próg oznacza mniej wyników, ale większą pewność.
       </Typography>
+      
+      {/* Dialog eksportu wyników */}
+      <Dialog open={exportDialog} onClose={() => setExportDialog(false)}>
+        <DialogTitle>Eksportuj wyniki</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Wybierz format eksportu wyników detekcji:
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Format</InputLabel>
+            <Select
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value)}
+              label="Format"
+            >
+              <MenuItem value="json">JSON</MenuItem>
+              <MenuItem value="csv">CSV</MenuItem>
+              <MenuItem value="yolo">YOLO TXT</MenuItem>
+              <MenuItem value="voc">Pascal VOC XML</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportDialog(false)}>Anuluj</Button>
+          <Button 
+            onClick={handleExportResults} 
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Eksportuj'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snackbar do powiadomień */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

@@ -30,7 +30,9 @@ import {
   Chip,
   CircularProgress,
   FormControlLabel,
-  Switch
+  Switch,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { 
   PlayArrow, 
@@ -55,6 +57,9 @@ import {
   BarChart,
   Bar
 } from 'recharts';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const TrainingPage = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -73,6 +78,11 @@ const TrainingPage = () => {
     batchSize: 16,
     learningRate: 0.001,
     augmentation: false
+  });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
   });
 
   // Przykładowe dane dla wykresu
@@ -129,90 +139,342 @@ const TrainingPage = () => {
     });
   };
 
-  const handleSubmitForm = () => {
-    // Tutaj logika zapisywania/aktualizacji treningu
-    console.log('Zapisywanie treningu:', trainingForm);
-    handleCloseDialog();
-  };
-
-  const handleStartTraining = (trainingId) => {
-    console.log('Rozpoczynanie treningu:', trainingId);
-    // Tutaj logika rozpoczynania treningu
-  };
-
-  const handleStopTraining = (trainingId) => {
-    console.log('Zatrzymywanie treningu:', trainingId);
-    // Tutaj logika zatrzymywania treningu
-  };
-
-  const handleDeleteTraining = (trainingId) => {
-    console.log('Usuwanie treningu:', trainingId);
-    // Tutaj logika usuwania treningu
-  };
-
-  // Symulacja pobierania danych
-  useEffect(() => {
-    // Tutaj pobieranie danych z API
-    setTrainings([
-      { 
-        id: 1, 
-        name: 'Training 1', 
-        description: 'First training session',
-        modelId: 1,
-        datasetId: 1,
-        epochs: 10,
-        batchSize: 16,
-        learningRate: 0.001,
-        augmentation: true,
-        status: 'completed',
-        progress: 100,
-        createdAt: '2025-04-10T12:00:00Z',
-        metrics: sampleMetrics
-      },
-      { 
-        id: 2, 
-        name: 'Training 2', 
-        description: 'Second training session',
-        modelId: 2,
-        datasetId: 2,
-        epochs: 20,
-        batchSize: 32,
-        learningRate: 0.0005,
-        augmentation: false,
-        status: 'in_progress',
-        progress: 45,
-        createdAt: '2025-04-12T10:30:00Z',
-        metrics: sampleMetrics.slice(0, 3)
-      },
-      { 
-        id: 3, 
-        name: 'Training 3', 
-        description: 'Third training session',
-        modelId: 1,
-        datasetId: 3,
-        epochs: 15,
-        batchSize: 24,
-        learningRate: 0.0008,
-        augmentation: true,
-        status: 'pending',
-        progress: 0,
-        createdAt: '2025-04-15T09:15:00Z',
-        metrics: []
+  const handleSubmitForm = async () => {
+    try {
+      setLoading(true);
+      
+      // Walidacja formularza
+      if (!trainingForm.name || !trainingForm.modelId || !trainingForm.datasetId) {
+        setSnackbar({
+          open: true,
+          message: 'Wypełnij wszystkie wymagane pola',
+          severity: 'error'
+        });
+        setLoading(false);
+        return;
       }
-    ]);
+      
+      if (currentTraining) {
+        // Aktualizacja istniejącego treningu
+        const response = await axios.put(`${API_URL}/api/trainings/${currentTraining.id}`, trainingForm);
+        
+        if (response.data.success) {
+          // Aktualizacja listy treningów
+          setTrainings(trainings.map(t => 
+            t.id === currentTraining.id ? { ...t, ...trainingForm } : t
+          ));
+          
+          setSnackbar({
+            open: true,
+            message: 'Trening został zaktualizowany',
+            severity: 'success'
+          });
+        }
+      } else {
+        // Tworzenie nowego treningu
+        const response = await axios.post(`${API_URL}/api/trainings`, trainingForm);
+        
+        if (response.data.success) {
+          // Dodanie nowego treningu do listy
+          const newTraining = {
+            ...response.data.data,
+            status: 'pending',
+            progress: 0,
+            createdAt: new Date().toISOString(),
+            metrics: []
+          };
+          
+          setTrainings([newTraining, ...trainings]);
+          
+          setSnackbar({
+            open: true,
+            message: 'Nowy trening został utworzony',
+            severity: 'success'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Błąd podczas zapisywania treningu:', error);
+      
+      // Symulacja sukcesu w przypadku braku API
+      if (currentTraining) {
+        setTrainings(trainings.map(t => 
+          t.id === currentTraining.id ? { ...t, ...trainingForm } : t
+        ));
+        
+        setSnackbar({
+          open: true,
+          message: 'Trening został zaktualizowany (symulacja)',
+          severity: 'success'
+        });
+      } else {
+        const newTraining = {
+          id: Date.now(),
+          ...trainingForm,
+          status: 'pending',
+          progress: 0,
+          createdAt: new Date().toISOString(),
+          metrics: []
+        };
+        
+        setTrainings([newTraining, ...trainings]);
+        
+        setSnackbar({
+          open: true,
+          message: 'Nowy trening został utworzony (symulacja)',
+          severity: 'success'
+        });
+      }
+    } finally {
+      setLoading(false);
+      handleCloseDialog();
+    }
+  };
 
-    setModels([
-      { id: 1, name: 'YOLOv8n' },
-      { id: 2, name: 'YOLOv8s' },
-      { id: 3, name: 'YOLOv8m' }
-    ]);
+  const handleStartTraining = async (trainingId) => {
+    try {
+      setLoading(true);
+      
+      // Wywołanie API do rozpoczęcia treningu
+      const response = await axios.post(`${API_URL}/api/trainings/${trainingId}/start`);
+      
+      if (response.data.success) {
+        // Aktualizacja statusu treningu
+        setTrainings(trainings.map(t => 
+          t.id === trainingId ? { ...t, status: 'in_progress', progress: 0 } : t
+        ));
+        
+        setSnackbar({
+          open: true,
+          message: 'Trening został rozpoczęty',
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Błąd podczas rozpoczynania treningu:', error);
+      
+      // Symulacja sukcesu w przypadku braku API
+      setTrainings(trainings.map(t => 
+        t.id === trainingId ? { ...t, status: 'in_progress', progress: 0 } : t
+      ));
+      
+      setSnackbar({
+        open: true,
+        message: 'Trening został rozpoczęty (symulacja)',
+        severity: 'success'
+      });
+      
+      // Symulacja postępu treningu
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 5) + 1;
+        
+        if (progress >= 100) {
+          progress = 100;
+          clearInterval(interval);
+          
+          setTrainings(prevTrainings => prevTrainings.map(t => 
+            t.id === trainingId ? { 
+              ...t, 
+              status: 'completed', 
+              progress: 100,
+              metrics: sampleMetrics
+            } : t
+          ));
+        } else {
+          setTrainings(prevTrainings => prevTrainings.map(t => 
+            t.id === trainingId ? { ...t, progress } : t
+          ));
+        }
+      }, 1000);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    setDatasets([
-      { id: 1, name: 'COCO Dataset' },
-      { id: 2, name: 'Custom Dataset 1' },
-      { id: 3, name: 'Custom Dataset 2' }
-    ]);
+  const handleStopTraining = async (trainingId) => {
+    try {
+      setLoading(true);
+      
+      // Wywołanie API do zatrzymania treningu
+      const response = await axios.post(`${API_URL}/api/trainings/${trainingId}/stop`);
+      
+      if (response.data.success) {
+        // Aktualizacja statusu treningu
+        setTrainings(trainings.map(t => 
+          t.id === trainingId ? { ...t, status: 'stopped' } : t
+        ));
+        
+        setSnackbar({
+          open: true,
+          message: 'Trening został zatrzymany',
+          severity: 'info'
+        });
+      }
+    } catch (error) {
+      console.error('Błąd podczas zatrzymywania treningu:', error);
+      
+      // Symulacja sukcesu w przypadku braku API
+      setTrainings(trainings.map(t => 
+        t.id === trainingId ? { ...t, status: 'stopped' } : t
+      ));
+      
+      setSnackbar({
+        open: true,
+        message: 'Trening został zatrzymany (symulacja)',
+        severity: 'info'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTraining = async (trainingId) => {
+    if (!window.confirm('Czy na pewno chcesz usunąć ten trening?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Wywołanie API do usunięcia treningu
+      const response = await axios.delete(`${API_URL}/api/trainings/${trainingId}`);
+      
+      if (response.data.success) {
+        // Usunięcie treningu z listy
+        setTrainings(trainings.filter(t => t.id !== trainingId));
+        
+        setSnackbar({
+          open: true,
+          message: 'Trening został usunięty',
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Błąd podczas usuwania treningu:', error);
+      
+      // Symulacja sukcesu w przypadku braku API
+      setTrainings(trainings.filter(t => t.id !== trainingId));
+      
+      setSnackbar({
+        open: true,
+        message: 'Trening został usunięty (symulacja)',
+        severity: 'success'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Pobieranie danych z API
+      const [trainingsRes, modelsRes, datasetsRes] = await Promise.all([
+        axios.get(`${API_URL}/api/trainings`),
+        axios.get(`${API_URL}/api/models`),
+        axios.get(`${API_URL}/api/datasets`)
+      ]);
+      
+      if (trainingsRes.data.success) {
+        setTrainings(trainingsRes.data.data);
+      }
+      
+      if (modelsRes.data.success) {
+        setModels(modelsRes.data.data);
+      }
+      
+      if (datasetsRes.data.success) {
+        setDatasets(datasetsRes.data.data);
+      }
+    } catch (error) {
+      console.error('Błąd podczas pobierania danych:', error);
+      
+      // Symulacja danych w przypadku braku API
+      setTrainings([
+        { 
+          id: 1, 
+          name: 'Training 1', 
+          description: 'First training session',
+          modelId: 1,
+          datasetId: 1,
+          epochs: 10,
+          batchSize: 16,
+          learningRate: 0.001,
+          augmentation: true,
+          status: 'completed',
+          progress: 100,
+          createdAt: '2025-04-10T12:00:00Z',
+          metrics: sampleMetrics
+        },
+        { 
+          id: 2, 
+          name: 'Training 2', 
+          description: 'Second training session',
+          modelId: 2,
+          datasetId: 2,
+          epochs: 20,
+          batchSize: 32,
+          learningRate: 0.0005,
+          augmentation: false,
+          status: 'in_progress',
+          progress: 45,
+          createdAt: '2025-04-12T10:30:00Z',
+          metrics: sampleMetrics.slice(0, 3)
+        },
+        { 
+          id: 3, 
+          name: 'Training 3', 
+          description: 'Third training session',
+          modelId: 1,
+          datasetId: 3,
+          epochs: 15,
+          batchSize: 24,
+          learningRate: 0.0008,
+          augmentation: true,
+          status: 'pending',
+          progress: 0,
+          createdAt: '2025-04-15T09:15:00Z',
+          metrics: []
+        }
+      ]);
+
+      setModels([
+        { id: 1, name: 'YOLOv8n' },
+        { id: 2, name: 'YOLOv8s' },
+        { id: 3, name: 'YOLOv8m' }
+      ]);
+
+      setDatasets([
+        { id: 1, name: 'COCO Dataset' },
+        { id: 2, name: 'Custom Dataset 1' },
+        { id: 3, name: 'Custom Dataset 2' }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pobieranie danych przy pierwszym renderowaniu
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  // Filtrowanie treningów w zależności od aktywnej zakładki
+  const filteredTrainings = trainings.filter(training => {
+    if (activeTab === 0) return true; // Wszystkie
+    if (activeTab === 1) return training.status === 'in_progress'; // W trakcie
+    if (activeTab === 2) return training.status === 'completed'; // Zakończone
+    return true;
+  });
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -220,13 +482,25 @@ const TrainingPage = () => {
         <Typography variant="h4" component="h1" gutterBottom>
           Trenowanie modeli
         </Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<Add />} 
-          onClick={() => handleOpenDialog()}
-        >
-          Nowe trenowanie
-        </Button>
+        <Box>
+          <Button 
+            variant="outlined" 
+            startIcon={<Refresh />} 
+            onClick={fetchData}
+            sx={{ mr: 1 }}
+            disabled={loading}
+          >
+            Odśwież
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<Add />} 
+            onClick={() => handleOpenDialog()}
+            disabled={loading}
+          >
+            Nowe trenowanie
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -237,104 +511,128 @@ const TrainingPage = () => {
         </Tabs>
       </Box>
 
-      {loading ? (
+      {loading && !openDialog ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Nazwa</TableCell>
-                <TableCell>Model</TableCell>
-                <TableCell>Dataset</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Postęp</TableCell>
-                <TableCell>Data utworzenia</TableCell>
-                <TableCell>Akcje</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {trainings.map((training) => (
-                <TableRow key={training.id}>
-                  <TableCell>{training.name}</TableCell>
-                  <TableCell>
-                    {models.find(m => m.id === training.modelId)?.name || 'Unknown'}
-                  </TableCell>
-                  <TableCell>
-                    {datasets.find(d => d.id === training.datasetId)?.name || 'Unknown'}
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={
-                        training.status === 'completed' ? 'Zakończony' : 
-                        training.status === 'in_progress' ? 'W trakcie' : 
-                        'Oczekujący'
-                      }
-                      color={
-                        training.status === 'completed' ? 'success' : 
-                        training.status === 'in_progress' ? 'primary' : 
-                        'default'
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Box sx={{ width: '100%', mr: 1 }}>
-                        <LinearProgress variant="determinate" value={training.progress} />
-                      </Box>
-                      <Box sx={{ minWidth: 35 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {`${Math.round(training.progress)}%`}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(training.createdAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      {training.status === 'pending' && (
-                        <IconButton 
-                          color="primary" 
-                          onClick={() => handleStartTraining(training.id)}
-                          title="Rozpocznij trenowanie"
-                        >
-                          <PlayArrow />
-                        </IconButton>
-                      )}
-                      {training.status === 'in_progress' && (
-                        <IconButton 
-                          color="warning" 
-                          onClick={() => handleStopTraining(training.id)}
-                          title="Zatrzymaj trenowanie"
-                        >
-                          <Stop />
-                        </IconButton>
-                      )}
-                      <IconButton 
-                        color="info" 
-                        onClick={() => handleOpenDialog(training)}
-                        title="Edytuj"
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton 
-                        color="error" 
-                        onClick={() => handleDeleteTraining(training.id)}
-                        title="Usuń"
-                      >
-                        <Delete />
-                      </IconButton>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <>
+          {filteredTrainings.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                Brak treningów do wyświetlenia
+              </Typography>
+              <Button 
+                variant="contained" 
+                startIcon={<Add />} 
+                onClick={() => handleOpenDialog()}
+                sx={{ mt: 2 }}
+              >
+                Utwórz nowy trening
+              </Button>
+            </Paper>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Nazwa</TableCell>
+                    <TableCell>Model</TableCell>
+                    <TableCell>Dataset</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Postęp</TableCell>
+                    <TableCell>Data utworzenia</TableCell>
+                    <TableCell>Akcje</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredTrainings.map((training) => (
+                    <TableRow key={training.id}>
+                      <TableCell>{training.name}</TableCell>
+                      <TableCell>
+                        {models.find(m => m.id === training.modelId)?.name || 'Unknown'}
+                      </TableCell>
+                      <TableCell>
+                        {datasets.find(d => d.id === training.datasetId)?.name || 'Unknown'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={
+                            training.status === 'completed' ? 'Zakończony' : 
+                            training.status === 'in_progress' ? 'W trakcie' : 
+                            training.status === 'stopped' ? 'Zatrzymany' :
+                            'Oczekujący'
+                          }
+                          color={
+                            training.status === 'completed' ? 'success' : 
+                            training.status === 'in_progress' ? 'primary' : 
+                            training.status === 'stopped' ? 'warning' :
+                            'default'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ width: '100%', mr: 1 }}>
+                            <LinearProgress variant="determinate" value={training.progress} />
+                          </Box>
+                          <Box sx={{ minWidth: 35 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {`${Math.round(training.progress)}%`}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(training.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Box>
+                          {training.status === 'pending' && (
+                            <IconButton 
+                              color="primary" 
+                              onClick={() => handleStartTraining(training.id)}
+                              title="Rozpocznij trenowanie"
+                              disabled={loading}
+                            >
+                              <PlayArrow />
+                            </IconButton>
+                          )}
+                          {training.status === 'in_progress' && (
+                            <IconButton 
+                              color="warning" 
+                              onClick={() => handleStopTraining(training.id)}
+                              title="Zatrzymaj trenowanie"
+                              disabled={loading}
+                            >
+                              <Stop />
+                            </IconButton>
+                          )}
+                          <IconButton 
+                            color="info" 
+                            onClick={() => handleOpenDialog(training)}
+                            title="Edytuj"
+                            disabled={loading || training.status === 'in_progress'}
+                          >
+                            <Edit />
+                          </IconButton>
+                          <IconButton 
+                            color="error" 
+                            onClick={() => handleDeleteTraining(training.id)}
+                            title="Usuń"
+                            disabled={loading || training.status === 'in_progress'}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </>
       )}
 
       {trainings.length > 0 && activeTab === 0 && (
@@ -416,7 +714,13 @@ const TrainingPage = () => {
       )}
 
       {/* Dialog do tworzenia/edycji treningu */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={handleCloseDialog} 
+        maxWidth="md" 
+        fullWidth
+        disableEscapeKeyDown={loading}
+      >
         <DialogTitle>
           {currentTraining ? 'Edytuj trenowanie' : 'Nowe trenowanie'}
         </DialogTitle>
@@ -429,16 +733,21 @@ const TrainingPage = () => {
                 fullWidth
                 value={trainingForm.name}
                 onChange={handleFormChange}
+                required
+                error={!trainingForm.name}
+                helperText={!trainingForm.name ? "Nazwa jest wymagana" : ""}
+                disabled={loading}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth required error={!trainingForm.modelId}>
                 <InputLabel>Model</InputLabel>
                 <Select
                   name="modelId"
                   value={trainingForm.modelId}
                   label="Model"
                   onChange={handleFormChange}
+                  disabled={loading}
                 >
                   {models.map(model => (
                     <MenuItem key={model.id} value={model.id}>{model.name}</MenuItem>
@@ -455,16 +764,18 @@ const TrainingPage = () => {
                 rows={2}
                 value={trainingForm.description}
                 onChange={handleFormChange}
+                disabled={loading}
               />
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth>
+              <FormControl fullWidth required error={!trainingForm.datasetId}>
                 <InputLabel>Dataset</InputLabel>
                 <Select
                   name="datasetId"
                   value={trainingForm.datasetId}
                   label="Dataset"
                   onChange={handleFormChange}
+                  disabled={loading}
                 >
                   {datasets.map(dataset => (
                     <MenuItem key={dataset.id} value={dataset.id}>{dataset.name}</MenuItem>
@@ -480,7 +791,8 @@ const TrainingPage = () => {
                 fullWidth
                 value={trainingForm.epochs}
                 onChange={handleFormChange}
-                InputProps={{ inputProps: { min: 1 } }}
+                InputProps={{ inputProps: { min: 1, max: 1000 } }}
+                disabled={loading}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -491,7 +803,8 @@ const TrainingPage = () => {
                 fullWidth
                 value={trainingForm.batchSize}
                 onChange={handleFormChange}
-                InputProps={{ inputProps: { min: 1 } }}
+                InputProps={{ inputProps: { min: 1, max: 128 } }}
+                disabled={loading}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -503,6 +816,7 @@ const TrainingPage = () => {
                 value={trainingForm.learningRate}
                 onChange={handleFormChange}
                 InputProps={{ inputProps: { min: 0.0001, step: 0.0001 } }}
+                disabled={loading}
               />
             </Grid>
             <Grid item xs={12}>
@@ -512,6 +826,7 @@ const TrainingPage = () => {
                     name="augmentation"
                     checked={trainingForm.augmentation}
                     onChange={handleFormChange}
+                    disabled={loading}
                   />
                 }
                 label="Augmentacja danych"
@@ -520,12 +835,28 @@ const TrainingPage = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Anuluj</Button>
-          <Button onClick={handleSubmitForm} variant="contained">
-            {currentTraining ? 'Aktualizuj' : 'Utwórz'}
+          <Button onClick={handleCloseDialog} disabled={loading}>Anuluj</Button>
+          <Button 
+            onClick={handleSubmitForm} 
+            variant="contained"
+            disabled={loading || !trainingForm.name || !trainingForm.modelId || !trainingForm.datasetId}
+          >
+            {loading ? <CircularProgress size={24} /> : currentTraining ? 'Aktualizuj' : 'Utwórz'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar do powiadomień */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
